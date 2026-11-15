@@ -1,0 +1,27 @@
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+components:
+  - id: puffer
+    type: tank-buffer
+    at: [500, 250]
+    label: { text: "Puffer P", sub: "Zonen 1-3" }
+  - id: h2_oel
+    type: boiler-oil
+    at: [200, 300]
+    label: { text: "H2 · Öl" }
+pipes:
+  - id: b-vl
+    from: { comp: h2_oel, port: top }
+    to: { comp: puffer, port: left }
+    kind: vl
+    via: [[200, 150], [500, 150]]
+readouts:
+  - id: a6_vl
+    at: { comp: h2_oel, port: left }
+    label: "a6 VL"
+    value_key: vl
+labels:
+  - id: zone-kk
+    at: [60, 60]
+    text: "Kellerebene"
+    anchor: start

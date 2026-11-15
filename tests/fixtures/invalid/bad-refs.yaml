@@ -1,0 +1,18 @@
+schema: plantschema/v1
+canvas: { width: 800, height: 500 }
+components:
+  - id: puffer
+    type: tank-buffer
+    at: [500, 250]
+  - id: h2_oel
+    type: boiler-oil
+    at: [200, 300]
+pipes:
+  - id: b-vl
+    from: { comp: ghost, port: top }
+    to: { comp: puffer, port: left }
+    kind: vl
+  - id: b-vl
+    from: { comp: h2_oel, port: top }
+    to: { comp: puffer, port: left }
+    kind: vl
