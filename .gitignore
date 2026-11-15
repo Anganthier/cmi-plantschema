@@ -8,3 +8,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+# Projekt-Interne (NIEMALS public) — private Projekt-Logs/Plan
+Plan.md
+CIR-Log.md
+memory.md
