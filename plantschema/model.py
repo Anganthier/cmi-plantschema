@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -228,6 +228,7 @@ class Readout(_Model):
     label: str
     value_key: str | None = None
     loop: str | None = None
+    side: Literal["left", "right"] = "right"
 
     @field_validator("id")
     @classmethod

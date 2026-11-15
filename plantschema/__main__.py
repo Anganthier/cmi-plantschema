@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .emit import TXT_FONT, compute_layout, render
+from .emit import RO_LBL_FONT, RO_VAL_FONT, TXT_FONT, compute_layout, render
 from .io import SchemaLoadError, load_schema
 from .model import SchemaError
 from .qa import TextElem, detect_collisions
@@ -59,7 +59,11 @@ def _print_schema_errors(exc: SchemaError) -> None:
 
 
 def _pipeline(schema):
-    """route + place + qa-Input (deterministisch, Schema-Reihenfolge)."""
+    """route + place + qa-Input (deterministisch, Schema-Reihenfolge).
+
+    S2: Readout-Texte = Wert (`.ro-val`, 12 px) + Label (`.ro-lbl`, 11 px),
+    Position/Anker wie emittiert (16 px neben Symbol, `side` → anchor).
+    """
     pipes, readout_pos = compute_layout(schema)
     texts: list[TextElem] = []
     for lbl in schema.labels:
@@ -68,7 +72,12 @@ def _pipeline(schema):
                               lbl.anchor.value))
     for r in schema.readouts:
         x, y = readout_pos[r.id]
-        texts.append(TextElem(f"readout-{r.id}", r.label, TXT_FONT, x, y, "middle"))
+        anchor = "start" if r.side == "right" else "end"
+        tx = x + (16 if r.side == "right" else -16)
+        texts.append(TextElem(f"readout-{r.id}.val", "–", RO_VAL_FONT, tx, y - 2,
+                              anchor))
+        texts.append(TextElem(f"readout-{r.id}.lbl", r.label, RO_LBL_FONT, tx,
+                              y + 14, anchor))
     return pipes, texts
 
 

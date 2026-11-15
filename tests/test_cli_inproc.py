@@ -59,6 +59,22 @@ def test_check_no_gate_suppresses(tmp_path):
     assert rc == EXIT_OK
 
 
+def test_render_exit0_rich_fixture(tmp_path):
+    """S2 E2E: Rich-Fixture (18 Typen + Pipes je kind + Readouts) rendert."""
+    out = tmp_path / "rich.svg"
+    rc, _ = call("render", "--in", str(fx("rich")), "--out", str(out),
+                 "--no-gate")
+    assert rc == EXIT_OK
+    content = out.read_text(encoding="utf-8")
+    # S2-Struktur: P&ID-Symbole, Readout-Hooks, Pfeil-Endpunkte, Style.
+    assert 'data-symbol="pid-tank-buffer"' in content
+    assert 'data-symbol="pid-pump-cent"' in content
+    assert 'href="#pid-pt"' in content
+    assert "data-value-key" in content and "data-readout" in content
+    assert 'class="pipe-arrow arrow-ctl"' in content
+    assert ".ro-val{" in content and "stroke-dasharray:6 4" in content
+
+
 def test_render_exit2_invalid_no_write(tmp_path):
     out = tmp_path / "x.svg"
     rc, err = call("render", "--in", str(fx("invalid")), "--out", str(out))

@@ -8,6 +8,12 @@ Element-IDs (`comp-*`, `pipe-*`, `readout-*`, `lbl-*`) — zum Einbetten in
 UIs mit Live-Readout- und Flow-Animation-Hooks. First-Target (S4): das
 cmi-Gesamt-Schema (V6.3).
 
+**Symbole: P&ID-Bibliothek (18, DIN EN ISO 10628-1, Seed aus cmi)** —
+`plantschema/symbols.py` portiert die `<defs>`-Symbole aus cmi
+`ui/svg/pid-symbols.svg` byte-identisch (klassen-basiert `.pid`/`.pid-t`);
+Komponenten werden per `<use href="#pid-…">` gerendert (Port-Endpunkte =
+Stiel-Enden/Kanten-Mitte, s. `docs/model-reference.md` § 5, R-30).
+
 ## Quickstart
 
 ```bash
@@ -24,6 +30,11 @@ python3.12 -m venv .venv
 
 # Nur Gate-Check (kein Write), z. B. für CI
 .venv/bin/python -m plantschema check --in tests/fixtures/minimal/installation.yaml
+
+# Rich-Beispiel (alle 18 Komponententypen, Pipes je kind, S4-Seed)
+.venv/bin/python -m plantschema render \
+    --in tests/fixtures/rich/installation.yaml \
+    --out tmp/rich.svg
 ```
 
 ## Projekt-Layout
@@ -34,7 +45,8 @@ plantschema/
 │   ├── model.py          #   Pydantic-v2-Modelle (Schema, Component, Pipe, …)
 │   ├── io.py             #   YAML → Modell (SchemaError mit Zeilenreferenz)
 │   ├── validate.py       #   Referenz-/Typ-Checks (Problemliste)
-│   ├── symbols.py        #   Port-Geometrie-Katalog + S1-Platzhalter-Symbole
+│   ├── symbols.py        #   P&ID-Symbol-Bibliothek (18 Symbole, Seed cmi)
+│   │                     #   + Port-Katalog + Component-Renderer (<use>)
 │   ├── route.py          #   Pipe-Geometrie (via-Route 1:1 / Manhattan-Fallback)
 │   ├── place.py          #   Readout-/Label-Positionen
 │   ├── qa.py             #   Kollisions-Detektion (TEXT×TEXT, LINE×TEXT)

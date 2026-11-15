@@ -12,11 +12,12 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def fx(name: str) -> Path:
-    """Fixture-Pfad: minimal / invalid / colliding."""
+    """Fixture-Pfad: minimal / invalid / colliding / rich."""
     return {
         "minimal": FIXTURES / "minimal" / "installation.yaml",
         "invalid": FIXTURES / "invalid" / "bad-refs.yaml",
         "colliding": FIXTURES / "colliding" / "collide.yaml",
+        "rich": FIXTURES / "rich" / "installation.yaml",
     }[name]
 
 

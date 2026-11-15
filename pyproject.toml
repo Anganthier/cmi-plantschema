@@ -32,5 +32,11 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
+# symbols.py: P&ID-Seed-Strings sind byte-identisch zum cmi-Original
+# (`ui/svg/pid-symbols.svg`) — dortige SVG-Quellzeilen > 100 Zeichen dürfen
+# NICHT umgebrochen werden (Kanon: Seed unverändert portieren).
+[tool.ruff.lint.per-file-ignores]
+"plantschema/symbols.py" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,7 +1,10 @@
 # Model-Reference — plantschema/v1 (Kanon)
 
-> **Status:** S1-Kanon (maschinell prüfbar). Kurze Regeln mit ID-Referenz;
+> **Status:** S2-Kanon (maschinell prüfbar; S1-Regeln unverändert, wo
+> nicht anders gekennzeichnet). Kurze Regeln mit ID-Referenz;
 > **M** = muss (hart), **S** = sollte, **K** = kann. Abweichungen → HITL.
+> Neue Regeln werden als R-Nummern **ergänzt**, bestehende nicht
+> umbrochen (R-1…R-28 = S1, R-29 ff. = S2).
 
 ## 1. Schema-Root
 
@@ -59,33 +62,74 @@ labels: [ … ]
 - **R-9 (M)** `from`/`to.port` liegt im (Override-geprägten) Port-Set des
   Komponententyps → sonst `ref-port`.
 - **R-10 (S)** `via` = autorisierte Route, 1:1 übernommen; ohne `via` =
-  Manhattan-Fallback (horizontal-dann-vertikal, 1 Umrisspunkt; S2:
-  Kanal-Hinweis-Logik).
+  Manhattan-Fallback (horizontal-dann-vertikal, 1 Umrisspunkt; S3:
+  Kanal-Hinweis/Vermeidungslogik, wenn das Kollisions-Gate den Fallback
+  bewertet). Die Punktesequenz (`PipeGeometry.points`) ist stabile
+  API für das S3-Gate (LINE×TEXT-Segmente).
 
-## 5. Port-Geometrie-Katalog (S1-Platzhalter)
+## 5. P&ID-Symbole + Port-Geometrie-Katalog (S2, Seed cmi)
+
+**Symbole (Kanon):** 18 P&ID-Symbole als `<g id="pid-…">` im emittierten
+`<defs>` (klassen-basiert `.pid`/`.pid-t`, **byte-identisch portiert**
+aus cmi `ui/svg/pid-symbols.svg` — DIN EN ISO 10628-1 + branchenübliche
+Haustechnik-Symbole; cmi-Demo-Block `pid-demo` wird NICHT portiert):
+`pid-tank-buffer`, `pid-boiler-oil`, `pid-boiler-solid`,
+`pid-collector-solar`, `pid-heatex-plate`, `pid-heatex-shell`,
+`pid-mixing`, `pid-pump-cent`, `pid-valve-2way`, `pid-valve-3way`,
+`pid-valve-globe`, `pid-valve-actuator`, `pid-throttle`, `pid-radiator`,
+`pid-tap`, `pid-chimney`, `pid-pt`, `pid-flow-switch`.
+
+- **R-12 (S→M, S2)** Komponententypen mit bekanntem Symbol werden per
+  `<use href="#pid-…">` (x/y = `at`, Symbol (0,0)-zentriert) gerendert,
+  `data-symbol="pid-…"`; unbekannter Typ → S1-Platzhalter-Rect
+  (`data-symbol="placeholder"`; Problem `unknown-type` in validate).
+- **R-29 (M, S2) Pfeil-Endpunkt-Regel:** kein `marker-end` (Marker-Farbe
+  aus `context-stroke` nicht portabel, 1 generischer Marker genügt nicht
+  für alle Kind-Farben) → stattdessen **Pfeil-Endpunkt = kleines
+  Dreieck-Path am Pipe-Ende** (`<path class="pipe-arrow arrow-<kind>">`,
+  Fill = Kind-Farbe; Spitze exakt am Pipe-Endpunkt, Basis 10 px davor,
+  Breite ±4 px, rotiert nach Letztem-Segment-Vektor; degenerierte Pipe
+  < 2 Punkte: kein Pfeil). Der S1-Marker `#arrow` bleibt im `<defs>`
+  (Kontinuität), wird aber nicht mehr von Pipes referenziert.
+- **R-30 (M, S2) Port-Endpunkt-Regel (S4N-2-QA):** Pipe-Endpunkte treffen
+  **exakt** auf Port-Positionen (absolut = `comp.at` + Port-Offset).
+  Port-Offsets = **Stiel-Enden** des cmi-Symbols (Stiele bei ±20 px);
+  bei Symbolen ohne Prozess-Stiel = **Kanten-Mitte** (Tank-Geometrie
+  nach cmi `loop-svg.js`-Kommentar-Kanon: x=±30, y=±60; Zone-Linien
+  y=±20; Kessel: Rect-Kante).
+- **R-11 (M)** Ports ohne Achse-Definition: Readout-Offset in Richtung des
+  Offsets; Offset (0,0) → nach oben (S1-Default).
 
 `at` = **Zentrum** des Symbols. Port-Offset = relative Position; Achse =
-Richtung, in der ein Readout-Label außerhalb des Ports steht.
+Ausrichtung für Readout-Offset + Pipe-Anbindung.
 
 | Typ | Ports (dx, dy, Achse) |
 |---|---|
-| `tank-buffer` | `top` (0,−60, up) · `mid` (0,0, up) · `bottom` (0,+60, down) · `left` (−30,0, left) · `right` (+30,0, right) |
+| `tank-buffer` | `top` (0,−60, up) · `mid-top` (0,−20, up) · `mid-bottom` (0,+20, down) · `bottom` (0,+60, down) · `left` (−30,0, left) · `right` (+30,0, right) |
 | `boiler-oil` | `top` (0,−26, up) · `left` (−28,0, left) · `right` (+28,0, right) · `bottom` (0,+26, down) |
-| `boiler-solid` | `top` (0,−30, up) · `left` (−28,0, left) · `right` (+28,0, right) · `bottom` (0,+30, down) |
-| `pump` | `in` (−20,0, left) · `out` (+20,0, right) |
-| `valve-2way` | `in` (−20,0, left) · `out` (+20,0, right) |
+| `boiler-solid` | `top` (0,−30, up) · `left` (−28,0, left) · `right` (+28,0, right) · `bottom` (0,+20, down) |
+| `collector-solar` | `in` (−41,0, left) · `out` (+41,0, right) |
 | `heatex-plate` | `in` (−35,0, left) · `out` (+35,0, right) · `top` (0,−14, up) · `bottom` (0,+14, down) |
+| `heatex-shell` | `in` (−30,0, left) · `out` (+30,0, right) · `bottom` (0,+20, down) |
+| `mixing` | `in` (−14,0, left) · `out` (+14,0, right) · `top` (0,−14, up) · `bottom` (0,+14, down) |
+| `pump` | `in` (−20,0, left) · `out` (+20,0, right) |
+| `valve-2way` | `in` (−20,0, left) · `out` (+20,0, right) · `stem` (0,−20, up) |
+| `valve-3way` | `in` (−20,0, left) · `out` (+20,0, right) · `mix` (0,+20, down) |
+| `valve-globe` | `in` (−20,0, left) · `out` (+20,0, right) · `stem` (0,−20, up) |
+| `valve-actuator` | `in` (−20,0, left) · `out` (+20,0, right) · `stem` (0,−20, up) |
+| `throttle` | `in` (−20,0, left) · `out` (+20,0, right) · `stem` (0,−20, up) |
 | `radiator` | `in` (−30,0, left) · `out` (+30,0, right) |
-| `collector-solar` | `in` (−34,0, left) · `out` (+34,0, right) |
-| `chimney` | `bottom` (0,+34, down) |
-| `tap` | `in` (0,−7, up) |
+| `tap` | `in` (−14,0, left) · `out` (+14,0, right) · `draw` (0,+20, down) |
+| `chimney` | `left` (−9,0, left) · `right` (+9,0, right) · `bottom` (0,+34, down) |
 | `pt`, `flow-switch` | keine Pipe-Ports (nur Readout-Hosts, `x/y`-Referenz) |
 
-- **R-11 (M)** Ports ohne Achse-Definition: Readout-Offset in Richtung des
-  Offsets; Offset (0,0) → nach oben (S1-Default).
-- **R-12 (S)** S1-Zeichnungen = schlichte Platzhalter (Rect/Kreis/Pfadsymbol),
-  `data-symbol="placeholder"`; S2 portiert die P&ID-`<defs>` aus cmi
-  `ui/svg/pid-symbols.svg` (DIN EN ISO 10628-1) — Port-Katalog bleibt Kanon.
+- **R-31 (S, S2) Typ→Symbol-Mapping:** 1:1 (`tank-buffer` →
+  `pid-tank-buffer` …, `pump` → `pid-pump-cent`); Alias `valve` =
+  2-Wege-Default (`pid-valve-2way` + valve-2way-Geometrie);
+  `valve-3way`, `valve-globe` direkt. Label-Offset je Typ:
+  `symbols.LABEL_OFFSET` (halbe Symbolhöhe + 12 px; Default 32) —
+  Labels stehen **oben über dem Symbol** (`.txt-h` + sub `.txt-s`,
+  Kollisions-Prüfung: S3).
 
 ## 6. Readout
 
@@ -96,13 +140,20 @@ Richtung, in der ein Readout-Label außerhalb des Ports steht.
 | `label` | string | M |
 | `value_key` | string | K (→ `data-value-key`) |
 | `loop` | string | K (→ `data-loop`) |
+| `side` | `left\|right` (default `right`, S2) | K |
 
 - **R-13 (M)** comp-Referenz: Komponente + Port müssen existieren
   (sonst `ref-component`/`ref-port`). `pt`/`flow-switch` sind **keine**
   Pipe-Port-Hosts.
 - **R-14 (M)** `{x,y}`: Koordinaten im Canvas (x ≤ width, y ≤ height).
-- **R-15 (S1)** Position bei comp-Referenz = Port-Position + **16 px**
+- **R-15 (S1, S2)** Position bei comp-Referenz = Port-Position + **16 px**
   außerhalb in Port-Achsenrichtung (`place.PLACE_OUTER`); x/y = Passthrough.
+  S2-Emissions-Struktur (cmi `loop-svg.js::readout`): PT-Symbol
+  `<use href="#pid-pt">` an der Position + **Wert-Text** `.ro-val`
+  (Platzhalter „–", 12 px, `data-value="true"`-Hook) + **Label-Text**
+  `.ro-lbl` (11 px) — Wert oben (y − 2), Label unten (y + 14), 16 px
+  neben dem Symbol: `side=right` (Default) → rechts, `text-anchor=start`;
+  `side=left` → links, `text-anchor=end`.
 
 ## 7. Label
 
@@ -141,15 +192,26 @@ Richtung, in der ein Readout-Label außerhalb des Ports steht.
 
 | Element | ID / Attribut | Bedeutung |
 |---|---|---|
-| Komponente | `g[@id="comp-<id>"]` | + `data-type`, `data-loop` (falls gesetzt), `data-flow` (falls `flow`), `data-symbol="placeholder"` (S1) |
-| Pipe | `path[@id="pipe-<id>"]` | + `data-kind`, `data-flow` (falls `flow`), `marker-end="url(#arrow)"`, `class="pipe <kind>"` |
-| Readout | `g[@id="readout-<id>"]` | + `data-value-key` (falls gesetzt), `data-readout` = Label-Text, `data-loop` (falls gesetzt) |
+| `<defs>` | `#arrow` + `#pid-…` (18 Symbole) | P&ID-Katalog (S2, byte-identisch cmi-Seed); Symbol-IDs sind Referenz-Ziele, keine Artefakt-Elemente |
+| Komponente | `g[@id="comp-<id>"]` | + `data-type`, `data-loop` (falls gesetzt), `data-flow` (falls `flow`), `data-symbol="pid-…"` (bekannt) bzw. `data-symbol="placeholder"` (S1-Fallback); Inhalt: `<use href="#pid-…">` (x/y = at) + Label-Texte `.txt-h`/`.txt-s` oben (R-31) |
+| Pipe | `path[@id="pipe-<id>"]` | + `data-kind`, `data-flow` (falls `flow`), `class="pipe <kind>"`; **kein** `marker-end` (S2, R-29) |
+| Pfeil-Endpunkt | `path[@class="pipe-arrow arrow-<kind>"]` | Kleines Dreieck am Pipe-Ende (S2, R-29), Fill = Kind-Farbe |
+| Readout | `g[@id="readout-<id>"]` | + `data-value-key` (falls gesetzt), `data-readout` = Label-Text, `data-loop` (falls gesetzt); Inhalt: `<use href="#pid-pt">` + Wert `.ro-val` (`data-value="true"`) + Label `.ro-lbl` (cmi-Kanon; `side` → `text-anchor`, R-15) |
 | Label | `text[@id="lbl-<id>"]` | + `text-anchor`, `class="txt"` |
 | Layer | `layer-pipes`, `layer-components`, `layer-readouts`, `layer-labels` | Reihenfolge = Z-Order (R-2) |
 
 - **R-21 (M)** IDs sind deterministisch aus `id` abgeleitet (Präfixe
   `comp-`/`pipe-`/`readout-`/`lbl-`) — UI-Bindungsvertrag (cmi S4N-3:
   Readout-Werte + Flow-Animation per ID anbinden; CSS/JS bleibt cmi-seitig).
+
+**ALC-Änderung (S2):** Output-Format geändert — Komponenten werden statt
+S1-Platzhalter-Rects per P&ID-`<use>` (Seed cmi `ui/svg/pid-symbols.svg`)
+gerendert, `data-symbol` trägt jetzt die Symbol-ID; Pipes tragen keine
+`marker-end` mehr (Pfeil-Endpunkte = `.pipe-arrow`-Paths, R-29);
+Readouts haben jetzt PT-Symbol + `.ro-val`/`.ro-lbl` (statt S1-Label-
+Text `.txt`); Style-Block enthält cmi-V6.3-Klassen (`.pid`, `.pid-t`,
+`.ro-val`, `.ro-lbl`, `.txt-h`, `.txt-s`, `.pipe` stroke-width 3,
+`.ctl` gestrichelt). Layer-Z-Order + ID-Verträge unverändert.
 
 ## 11. Determinismus (Kanon)
 
@@ -167,6 +229,8 @@ Richtung, in der ein Readout-Label außerhalb des Ports steht.
   Intersektion, cmi-Heuristik: width ≈ font_size·0.52·len, Höhe ≈
   font_size·1.2) + **LINE×TEXT** (Pipe-Segment läuft durch Text-BBox,
   Sampling 5 px, ≥ 2 Treffer). S3 ergänzt TEXT×Box-Kante + USE×TEXT.
+  S2-Input: Readout-Texte = `.ro-val` (12 px) + `.ro-lbl` (11 px) mit
+  Emissions-Position/Anker (`side`); Labels = `.txt`.
 - **R-27 (M)** Kollision → exit 3 + Report (je Kollision eine Zeile:
   `KIND [elemA] × [elemB] @ (x,y) — Hinweis`); `--no-gate` = Debug-Aus.
 - **R-28 (S)** Readout-/Label-Größen: Wert ≥ 12 px, Label ≥ 11 px

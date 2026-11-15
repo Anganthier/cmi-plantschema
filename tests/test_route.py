@@ -1,9 +1,9 @@
-"""S1: route — via-Route 1:1, Fallback-Manhattan, d-String + Pfeile."""
+"""S2: route — via-Route 1:1, Fallback-Manhattan, Pfeil-Endpunkte (R-29)."""
 
 from __future__ import annotations
 
 from plantschema.model import Pipe
-from plantschema.route import PipeGeometry, path_d, port_position, route_pipe
+from plantschema.route import PipeGeometry, arrow_d, path_d, port_position, route_pipe
 
 
 def test_via_route_is_1_to_1():
@@ -89,7 +89,7 @@ def test_port_position_from_catalog():
     assert port_position("tank-buffer", (500, 250), "top") == (500, 190)
 
 
-def test_pipe_geometry_carries_kind_and_flow():
+def test_pipe_geometry_carries_kind_and_flow_and_points():
     p = Pipe.model_validate({
         "id": "b",
         "from": {"comp": "h", "port": "top"},
@@ -101,3 +101,59 @@ def test_pipe_geometry_carries_kind_and_flow():
     assert g.kind == "ctl"
     assert g.flow == "loop-B"
     assert g.d == "M0,0 L10,0"
+    # Segmente-API (S3-Gate: LINE×TEXT braucht die Punktesequenz).
+    assert g.points == [(0, 0), (10, 0)]
+
+
+# ---------------------------------------------------------------------------
+# Pfeil-Endpunkte (R-29, S2)
+# ---------------------------------------------------------------------------
+
+
+def test_arrow_horizontal_facing_right():
+    # Letztes Segment horizontal nach rechts → Pfeil-Dreieck, Spitze (500,300).
+    d = arrow_d([(100, 300), (500, 300)])
+    assert d.startswith("M500,300 L")
+    assert d.endswith(" Z")
+    # Basis-Mitte 10 px davor (490,300); Flanken ±4 px senkrecht (y=304/296).
+    assert "L490.0,304.0" in d and "L490.0,296.0" in d
+
+
+def test_arrow_horizontal_facing_left():
+    d = arrow_d([(500, 300), (100, 300)])
+    assert d.startswith("M100,300 L")
+    # Spitze (100,300), Basis bei (110,300) ± 4.
+    assert "L110.0,304.0" in d and "L110.0,296.0" in d
+
+
+def test_arrow_vertical_facing_down():
+    d = arrow_d([(300, 100), (300, 400)])
+    assert d.startswith("M300,400 L")
+    # Senkrecht nach unten: Flanken x = 300±4, Basis y = 390.
+    assert "L304.0,390.0" in d and "L296.0,390.0" in d
+
+
+def test_arrow_uses_last_segment_direction():
+    # Via-Route: letztes Segment (vertikal) bestimmt die Pfeil-Ausrichtung.
+    pts = [(100, 100), (400, 100), (400, 300)]
+    d = arrow_d(pts)
+    assert d.startswith("M400,300 L")
+    assert "L404.0,290.0" in d and "L396.0,290.0" in d
+
+
+def test_arrow_degenerate_pipe_returns_empty():
+    assert arrow_d([]) == ""
+    assert arrow_d([(10, 10)]) == ""
+    assert arrow_d([(10, 10), (10, 10)]) == ""
+
+
+def test_arrow_deterministic():
+    pts = [(0, 0), (300, 200)]
+    assert arrow_d(pts) == arrow_d(list(pts))
+
+
+def test_arrow_tip_exactly_at_pipe_endpoint():
+    """R-29: Spitze des Pfeils = exakt Pipe-Endpunkt (M-Teil des d-Strings)."""
+    end = (612, 290)
+    d = arrow_d([(560, 250), end])
+    assert d.startswith(f"M{end[0]},{end[1]} ")

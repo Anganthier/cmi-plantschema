@@ -17,9 +17,11 @@ def test_load_minimal_fixture(minimal_schema):
     assert s.canvas.background == "#0b1220"
     assert [c.id for c in s.components] == ["puffer", "h2_oel"]
     assert s.pipes[0].from_.comp == "h2_oel"
-    assert s.pipes[0].via == [(200, 150), (500, 150)]
+    assert s.pipes[0].from_.port == "right"
+    assert s.pipes[0].via == [(350, 300)]
     assert s.readouts[0].at.is_ref
     assert s.readouts[0].value_key == "vl"
+    assert s.readouts[0].side == "left"
     assert s.labels[0].anchor.value == "start"
 
 

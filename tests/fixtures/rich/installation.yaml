@@ -1,0 +1,170 @@
+# Rich-Fixture (S2/S4-Seed): alle 18 Komponententypen + Pipes je kind
+# (vl/rl/ww/gas/ctl) + Readouts (side left/right) + Labels.
+#
+# Zweck: E2E-Test der S2-Emission (P&ID-Symbole, Readout-Struktur,
+# Pfeil-Endpunkte, Style-Klassen) + Seed für S4 (cmi-Gesamt-Schema).
+# NICHT kollisionsfrei garantiert (Gate kommt in S3) — `render --no-gate`.
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+
+components:
+  - id: puffer
+    type: tank-buffer
+    at: [350, 330]
+    label: { text: "Puffer P", sub: "S4-Seed" }
+  - id: h1_holz
+    type: boiler-solid
+    at: [130, 210]
+    label: { text: "H1 · Holz" }
+  - id: h2_oel
+    type: boiler-oil
+    at: [130, 330]
+    label: { text: "H2 · Öl" }
+  - id: h3_kollektor
+    type: collector-solar
+    at: [640, 80]
+    label: { text: "H3 · Kollektor" }
+  - id: o1_pumpe
+    type: pump
+    at: [250, 170]
+    label: { text: "O1" }
+  - id: o3_mischer
+    type: valve-3way
+    at: [470, 210]
+    label: { text: "O3 · Mischer", sub: "3-Wege" }
+  - id: o9_kipp
+    type: valve-globe
+    at: [560, 420]
+    label: { text: "O9 · Kipp" }
+  - id: o8_actuator
+    type: valve-actuator
+    at: [470, 130]
+    label: { text: "O8 · Aktor" }
+  - id: o2_v2w
+    type: valve-2way
+    at: [610, 290]
+    label: { text: "O2" }
+  - id: rm1_minderer
+    type: throttle
+    at: [640, 380]
+    label: { text: "RM1 · Minderer" }
+  - id: r1_heizkoerper
+    type: radiator
+    at: [680, 320]
+    label: { text: "R1" }
+  - id: w_platten
+    type: heatex-plate
+    at: [560, 290]
+    label: { text: "W · Platten-HE" }
+  - id: p_spirale
+    type: heatex-shell
+    at: [350, 450]
+    label: { text: "P-Spirale" }
+  - id: misch_rl
+    type: mixing
+    at: [430, 420]
+    label: { text: "RL-Mischung" }
+  - id: e1_schornstein
+    type: chimney
+    at: [130, 80]
+    label: { text: "E1" }
+  - id: ww_zapf
+    type: tap
+    at: [700, 230]
+    label: { text: "WW-Zapf" }
+  - id: a_sens1
+    type: pt
+    at: [250, 300]
+  - id: a_sens2
+    type: flow-switch
+    at: [610, 250]
+
+pipes:
+  # VL (vorlauf, 3 px): H1 → O1 → Mischer
+  - id: vl-h1-o1
+    from: { comp: h1_holz, port: right }
+    to: { comp: o1_pumpe, port: in }
+    kind: vl
+  - id: vl-o1-o3
+    from: { comp: o1_pumpe, port: out }
+    to: { comp: o3_mischer, port: in }
+    kind: vl
+    via: [[400, 170]]
+  # RL (rücklauf, 3 px): P-Unten → H2 → Kipp → Mischknoten
+  - id: rl-p-h2
+    from: { comp: puffer, port: bottom }
+    to: { comp: h2_oel, port: right }
+    kind: rl
+  - id: rl-h2-o9
+    from: { comp: h2_oel, port: top }
+    to: { comp: o9_kipp, port: in }
+    kind: rl
+    via: [[130, 380], [490, 380]]
+  - id: rl-o9-misch
+    from: { comp: o9_kipp, port: out }
+    to: { comp: misch_rl, port: bottom }
+    kind: rl
+    via: [[580, 450], [430, 450]]
+  # WW (cyan, 3 px): P-Oben → W-Platten → O2 → R1
+  - id: ww-p-w
+    from: { comp: puffer, port: right }
+    to: { comp: w_platten, port: in }
+    kind: ww
+  - id: ww-w-o2
+    from: { comp: w_platten, port: out }
+    to: { comp: o2_v2w, port: in }
+    kind: ww
+  - id: ww-o2-r1
+    from: { comp: o2_v2w, port: out }
+    to: { comp: r1_heizkoerper, port: in }
+    kind: ww
+  # Gas/Abgas (grau, 3 px): H1 → E1
+  - id: gas-h1-e1
+    from: { comp: h1_holz, port: top }
+    to: { comp: e1_schornstein, port: bottom }
+    kind: gas
+    via: [[80, 180], [80, 114], [121, 114]]
+  # Steuer (lila, 1.5 px gestrichelt): O8-Aktor-Stiel → O3-Misch-Schenkel
+  - id: ctl-o8-o3
+    from: { comp: o8_actuator, port: stem }
+    to: { comp: o3_mischer, port: mix }
+    kind: ctl
+
+readouts:
+  - id: a1_p_oben
+    at: { comp: puffer, port: top }
+    label: "a1 P-Oben"
+    value_key: p_oben
+  - id: a2_holz
+    at: { comp: h1_holz, port: left }
+    label: "a2 H1"
+    value_key: h1
+    side: left
+  - id: a5_oel
+    at: { comp: h2_oel, port: left }
+    label: "a5 Öl-VL"
+    value_key: h2
+    side: left
+  - id: a6_vl
+    at: { comp: o3_mischer, port: out }
+    label: "a6 VL"
+    value_key: vl
+  - id: a16_ss
+    at: { x: 610, y: 250 }
+    label: "a16 Strömung"
+    value_key: a16
+  - id: a17_kollektor
+    at: { comp: h3_kollektor, port: in }
+    label: "a17 Kollektor"
+    value_key: h3
+    side: left
+
+labels:
+  - id: zone-keller
+    at: [60, 480]
+    text: "Kellerebene (S4-Seed)"
+    anchor: start
+  - id: zone-dach
+    at: [600, 40]
+    text: "Dach"
+    anchor: middle

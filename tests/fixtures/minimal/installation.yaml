@@ -11,15 +11,16 @@ components:
     label: { text: "H2 · Öl" }
 pipes:
   - id: b-vl
-    from: { comp: h2_oel, port: top }
+    from: { comp: h2_oel, port: right }
     to: { comp: puffer, port: left }
     kind: vl
-    via: [[200, 150], [500, 150]]
+    via: [[350, 300]]
 readouts:
   - id: a6_vl
     at: { comp: h2_oel, port: left }
     label: "a6 VL"
     value_key: vl
+    side: left
 labels:
   - id: zone-kk
     at: [60, 60]

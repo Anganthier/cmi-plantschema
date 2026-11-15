@@ -172,9 +172,7 @@ def _check_component_types(schema: Schema, out: list[Problem]) -> None:
             )
     for i, c in enumerate(schema.components):
         if c.ports is not None:
-            known_ports = frozenset(
-                p.name for p in symbols.PLACEHOLDER_SYMBOLS.get(c.type, _EMPTY).ports
-            )
+            known_ports = symbols.port_names(c.type)
             for port in c.ports:
                 if port not in known_ports:
                     out.append(
@@ -187,9 +185,6 @@ def _check_component_types(schema: Schema, out: list[Problem]) -> None:
                     )
 
 
-_EMPTY = symbols.SymbolInfo("rect", (1, 1), ())
-
-
 def _find_component(schema: Schema, comp_id: str) -> Component | None:
     for c in schema.components:
         if c.id == comp_id:
@@ -200,7 +195,7 @@ def _find_component(schema: Schema, comp_id: str) -> Component | None:
 def _ports_by_comp(schema: Schema) -> dict[str, frozenset[str]]:
     out: dict[str, frozenset[str]] = {}
     for c in schema.components:
-        if c.type in symbols.PLACEHOLDER_SYMBOLS:
+        if symbols.is_known_type(c.type):
             out[c.id] = symbols.allowed_ports(c.type, c.ports)
         else:
             out[c.id] = frozenset()

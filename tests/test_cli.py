@@ -92,6 +92,42 @@ def test_render_no_gate_exit0_despite_collision(tmp_path):
     assert out.exists()
 
 
+def test_render_rich_fixture_no_gate(tmp_path):
+    """S2 E2E (Subprocess): Rich-Fixture → valide SVG, exit 0 (--no-gate).
+
+    Die Rich-Fixture ist S4-Seed und muss NICHT kollisionsfrei sein
+    (Gate kommt in S3); mit `--no-gate` ist exit 0 Pflicht.
+    """
+    out = tmp_path / "rich" / "rich.svg"
+    r = run_cli("render", "--in", str(fx("rich")), "--out", str(out),
+                "--no-gate", cwd=tmp_path)
+    assert r.returncode == 0
+    assert out.exists()
+    content = out.read_text(encoding="utf-8")
+    assert 'id="comp-puffer"' in content
+    assert 'id="pipe-ctl-o8-o3"' in content
+    assert 'id="readout-a6_vl"' in content
+    assert 'id="lbl-zone-keller"' in content
+    # Alle 18 P&ID-Symbole im <defs>.
+    for sym in ("pid-tank-buffer", "pid-boiler-oil", "pid-boiler-solid",
+                "pid-collector-solar", "pid-heatex-plate", "pid-heatex-shell",
+                "pid-mixing", "pid-pump-cent", "pid-valve-2way",
+                "pid-valve-3way", "pid-valve-globe", "pid-valve-actuator",
+                "pid-throttle", "pid-radiator", "pid-tap", "pid-chimney",
+                "pid-pt", "pid-flow-switch"):
+        assert f'id="{sym}"' in content, f"{sym} fehlt"
+
+
+def test_render_rich_gate_status_reported(tmp_path):
+    """Rich-Fixture mit Gate: Exit 0 (kollisionsfrei) oder 3 (Report)."""
+    out = tmp_path / "rich-gate.svg"
+    r = run_cli("render", "--in", str(fx("rich")), "--out", str(out),
+                cwd=tmp_path)
+    assert r.returncode in (0, 3), f"Rich-Gate: unerwarteter Exit {r.returncode}"
+    if r.returncode == 3:
+        assert "Kollision" in r.stderr
+
+
 def test_render_exit2_on_invalid(tmp_path):
     out = tmp_path / "nope.svg"
     r = run_cli("render", "--in", str(fx("invalid")), "--out", str(out),
