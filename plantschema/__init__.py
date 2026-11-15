@@ -7,6 +7,7 @@ Pipeline: parse → validate → route → place → emit → write
 from .model import (
     Canvas,
     Component,
+    Group,
     Label,
     LabelSpec,
     Pipe,
@@ -24,6 +25,7 @@ __version__ = "0.1.0"
 __all__ = [
     "Canvas",
     "Component",
+    "Group",
     "Label",
     "LabelSpec",
     "Pipe",

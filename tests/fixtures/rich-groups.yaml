@@ -1,0 +1,51 @@
+# S4-L1-Positiv-Fixture (R-35): 2 Makro-Gruppen mit Autor-Box-Geometrie
+# (at/size), 4 Komponenten, Pipe g1→g2, 1 Label.
+# g1: hub = p1 (Zentrum), Mitglied v1 · g2: ohne hub, Mitglieder t1/b1.
+# Valid + renderbar + 0 Kollisionen (Gate-DoD, R-35).
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+
+components:
+  - id: p1
+    type: pump
+    at: [150, 150]
+    label: { text: "P1" }
+  - id: v1
+    type: valve-2way
+    at: [300, 180]
+    label: { text: "V2" }
+  - id: t1
+    type: tank-buffer
+    at: [450, 300]
+    label: { text: "T4", sub: "Puffer" }
+  - id: b1
+    type: boiler-oil
+    at: [600, 300]
+    label: { text: "B1" }
+
+groups:
+  - id: g1
+    label: "Gruppe A"
+    members: [p1, v1]
+    hub: p1
+    at: [80, 60]
+    size: [300, 180]
+  - id: g2
+    members: [t1, b1]
+    at: [380, 190]
+    size: [300, 220]
+
+pipes:
+  # V1-Right (320,180) → T4-Left (420,300), via unten (x=320-Vertikale
+  # bleibt frei; Endpunkt exakt auf dem Left-Port, R-30).
+  - id: vl-g1-g2
+    from: { comp: v1, port: out }
+    to: { comp: t1, port: left }
+    kind: vl
+    via: [[320, 300]]
+
+labels:
+  - id: legende
+    at: [40, 480]
+    text: "S4-L1-Gruppen-Fixture"
+    anchor: start

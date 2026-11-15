@@ -13,6 +13,7 @@ schema: plantschema/v1            # M: exakt diese Zeichenkette (Field `version`
 canvas: { width: 2200, height: 1500, background: "#0b1220" }
 components: [ … ]                 # optional (default [])
 pipes: [ … ]
+groups: [ … ]                     # optional (default [], S4-L1, R-35)
 readouts: [ … ]
 labels: [ … ]
 ```
@@ -66,6 +67,44 @@ labels: [ … ]
   Kanal-Hinweis/Vermeidungslogik, wenn das Kollisions-Gate den Fallback
   bewertet). Die Punktesequenz (`PipeGeometry.points`) ist stabile
   API für das S3-Gate (LINE×TEXT-Segmente).
+
+## 4b. Group (S4-L1, R-35)
+
+| Feld | Typ | Pflicht |
+|---|---|---|
+| `id` | string (R-3) | M |
+| `label` | string (Box-Beschriftung) | K |
+| `members` | list[string] (Component-IDs, R-3) | M |
+| `hub` | string (Component-ID, R-3) | K |
+| `at` | `[x, y]` obere linke Ecke der Box (R-35: > 0) | M |
+| `size` | `[bw, höhe]` Box-Breite/Höhe (R-35: > 0) | M |
+
+- **R-35 (M, S4-L1) Group-Modell + Makro-Geometrie:** Makro-Gruppen
+  gehören ins YAML (plant-neutral, David-Entscheidung S4).
+  `at`/`size` sind **Pflicht** = Autor-definierte Makro-Box (keine
+  Auto-Ableitung aus Member-Positionen): `at` = obere linke Ecke,
+  `size` = Breite/Höhe; alle 4 Werte müssen **> 0** sein
+  (Validierungs-Problem `group-geometry`; R-4-Prüfung `≥ 0`/ganzzahlig
+  bleibt zusätzlich wirksam). `members` = Member-Komponenten (je
+  Member muss die Komponente existieren: `group-member-ref`; eine
+  Komponente ist in höchstens einer Gruppe:
+  `group-double-membership`; doppelte Group-IDs →
+  `group-id-duplicate`). `hub` = optionale Zentralkomponente der
+  Gruppe (muss ∈ `members`: `group-hub-not-member`; muss existieren:
+  `group-hub-ref`); Semantik = Mikro-Layout-Verankerung (S4-L2).
+  **Mikro-Layout** (Auto-Platzierung der Member innerhalb der Box)
+  folgt als **R-36 (S4-L2)** — S4-L1 emittiert NUR die Makro-Box:
+  gestricheltes Rect `.gbox` (kein Fill, `stroke rgba(140,160,200,0.25)`,
+  `stroke-dasharray 6 4`), `id="group-<id>"`, `data-hub` (falls `hub`),
+  Layer `layer-groups` **unterhalb der Zonen-Behälter** (Z-Order:
+  Hintergrund → `layer-groups` → Pipes → Komponenten → Readouts →
+  Labels), optionales Label `.gbox-lbl` (12 px, gedämpft
+  `#8fa0bd`, oben links in der Box, Offset 8 px; nur wenn `label`
+  gesetzt). Kollisions-Gate: **GROUP-BOX** (Overlap zweier Makro-Boxen
+  → Kollision, exit 3; gleiche `OVERLAP_THRESHOLD`-Methodik wie die
+  Text-Box-Edge-Checks: Overlap-Anteil der **kleineren** Box-Fläche
+  > 50 %, eine Kollision pro Paar). GROUP-BOX×COMPONENT und
+  GROUP-BOX×LABEL folgen in S4-L3.
 
 ## 5. P&ID-Symbole + Port-Geometrie-Katalog (S2, Seed cmi)
 
@@ -208,6 +247,12 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 | `out-of-canvas` | Readout/Label außerhalb des Canvas (R-14, R-16) |
 | `canvas-too-small` | width/height ≤ 100 (R-18) |
 | `unknown-type` | Komponententyp nicht im Katalog (R-6) |
+| `group-id-duplicate` | doppelte Group-ID (Group×Group, R-35; Group×fremde-Art bleibt `dup-id`, R-5) |
+| `group-member-ref` | Group-Member existiert nicht als Komponente (R-35) |
+| `group-hub-ref` | Group-Hub existiert nicht als Komponente (R-35) |
+| `group-hub-not-member` | Group-Hub ∉ members (R-35) |
+| `group-double-membership` | Komponente in > 1 Gruppe (R-35) |
+| `group-geometry` | `at`/`size` mit Wert ≤ 0 (R-35, Makro-Box-Kanon) |
 
 - **R-20 (M)** `validate` liefert **alle** Probleme (nicht nur das erste);
   CLI gibt je Problem eine Zeile aus und exitet 2.
@@ -220,9 +265,10 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 | Komponente | `g[@id="comp-<id>"]` | + `data-type`, `data-loop` (falls gesetzt), `data-flow` (falls `flow`), `data-symbol="pid-…"` (bekannt) bzw. `data-symbol="placeholder"` (S1-Fallback); Inhalt: `<use href="#pid-…">` (x/y = at) + Label-Texte `.txt-h`/`.txt-s` oben (R-31) |
 | Pipe | `path[@id="pipe-<id>"]` | + `data-kind`, `data-flow` (falls `flow`), `class="pipe <kind>"`; **kein** `marker-end` (S2, R-29) |
 | Pfeil-Endpunkt | `path[@class="pipe-arrow arrow-<kind>"]` | Kleines Dreieck am Pipe-Ende (S2, R-29), Fill = Kind-Farbe |
+| Gruppe-Box | `g[@id="group-<id>"]` in `layer-groups` | + `data-hub` (falls `hub`); Inhalt: `<rect class="gbox">` (x/y = `at`, width/height = `size`) + optionales Label-Text `.gbox-lbl` (oben links, Offset 8 px; S4-L1, R-35) |
 | Readout | `g[@id="readout-<id>"]` | + `data-value-key` (falls gesetzt), `data-readout` = Label-Text, `data-loop` (falls gesetzt); Inhalt: `<use href="#pid-pt">` + Wert `.ro-val` (`data-value="true"`) + Label `.ro-lbl` (cmi-Kanon; `side` → `text-anchor`, R-15) |
 | Label | `text[@id="lbl-<id>"]` | + `text-anchor`, `class="txt"` |
-| Layer | `layer-pipes`, `layer-components`, `layer-readouts`, `layer-labels` | Reihenfolge = Z-Order (R-2) |
+| Layer | `layer-groups`, `layer-pipes`, `layer-components`, `layer-readouts`, `layer-labels` | Reihenfolge = Z-Order (R-2; `layer-groups` = S4-L1, R-35, unterhalb der Zonen-Behälter) |
 
 - **R-21 (M)** IDs sind deterministisch aus `id` abgeleitet (Präfixe
   `comp-`/`pipe-`/`readout-`/`lbl-`) — UI-Bindungsvertrag (cmi S4N-3:
@@ -312,6 +358,15 @@ Stiele, Pfeil-Enden; `valve`-Alias = valve-2way):
   `LABEL_OFFSET` (S2); Gate-Report: Warnungs-Block (R-33) vor den
   Kollisionen; neue Check-Arten `text-box-edge`/`symbol-text`/
   `readout-size` (R-34); `SYMBOL_BOUNDS`-Katalog (R-34).
+
+- **ALC-Änderung (S4-L1):** neue Root-Liste `groups` (default `[]`) +
+  `Group`-Modell (R-35, Makro-Geometrie `at`/`size` = Autor-Pflicht);
+  Emission: `layer-groups` (neu, Z-Order vor `layer-pipes`) +
+  `.gbox`/`.gbox-lbl`-Style-Klassen + `group-*`-ID-Präfix; neues
+  Gate-Check `group-box` (R-35-Overlap); 6 neue Validierungs-Probleme
+  (`group-id-duplicate`, `group-member-ref`, `group-hub-ref`,
+  `group-hub-not-member`, `group-double-membership`,
+  `group-geometry`); bestehende R-1…R-34 unverändert.
 
 ## 13. Exit-Codes (CLI-Kanon)
 

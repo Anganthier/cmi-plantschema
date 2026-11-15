@@ -89,6 +89,57 @@ def test_check_exit3_symbol_text():
     assert "SYMBOL-TEXT" in err
 
 
+# ------------------------------------------------------------ S4-L1 (R-35):
+# Gruppen-Fixtures (Positiv: rich-groups; Negativ: group-box-Overlap,
+# doppelte Mitgliedschaft).
+
+
+def test_validate_rich_groups_ok():
+    rc, err = call("validate", "--in", str(fx("rich-groups")))
+    assert rc == EXIT_OK, err
+
+
+def test_check_rich_groups_exit0():
+    rc, err = call("check", "--in", str(fx("rich-groups")))
+    assert rc == EXIT_OK, err
+    assert "Kollision" not in err
+
+
+def test_render_rich_groups_exit0(tmp_path):
+    """S4-L1 E2E (R-35): neue Fixture → validate/check/render exit 0,
+    SVG mit gbox-Boxen + .gbox-lbl-Label."""
+    out = tmp_path / "rich-groups.svg"
+    rc, err = call("render", "--in", str(fx("rich-groups")),
+                   "--out", str(out))
+    assert rc == EXIT_OK, err
+    content = out.read_text(encoding="utf-8")
+    assert 'id="layer-groups"' in content
+    assert 'id="group-g1"' in content and 'id="group-g2"' in content
+    assert 'class="gbox"' in content
+    assert "Gruppe A" in content  # .gbox-lbl-Text (nur g1 gelabelt)
+    assert 'class="gbox-lbl"' in content
+
+
+def test_check_exit3_group_box_overlap():
+    """S4-L1 (R-35): überlappende Gruppen-Boxen → exit 3 +
+    GROUP-BOX-Zeile."""
+    rc, err = call("check", "--in", str(fx("colliding-group-box")))
+    assert rc == EXIT_GATE
+    assert "GROUP-BOX" in err
+    assert "group-g1" in err and "group-g2" in err
+
+
+def test_validate_exit2_double_membership():
+    """S4-L1 (R-35): doppelte Mitgliedschaft → exit 2 +
+    group-double-membership-Zeile."""
+    rc, err = call("validate", "--in",
+                   str(fx("invalid-double-membership")))
+    assert rc == EXIT_SCHEMA
+    assert "groups[1].members" in err
+    assert "Mitglied zweier Gruppen" in err
+    assert "'p1'" in err
+
+
 def test_check_rich_warn_block_exit0():
     """S3 (R-33): Rich → Warnungs-Block (Slot-Fallbacks), Exit 0."""
     rc, err = call("check", "--in", str(fx("rich")))

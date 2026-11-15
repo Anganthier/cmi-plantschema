@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from plantschema.model import (
     Canvas,
     Component,
+    Group,
     Label,
     Pipe,
     PipeKind,
@@ -220,3 +221,99 @@ def test_schema_error_format_no_line():
     e = SchemaError("fehlend", path="pipes.id")
     assert e.format() == "[?] pipes.id: fehlend"
     assert e.line is None
+
+
+# ------------------------------------------------------------ S4-L1 (R-35):
+# Group-Modell (Makro-Geometrie: at/size Pflicht, R-4-Prüfung).
+
+
+def test_group_model_valid_minimal():
+    g = Group.model_validate({
+        "id": "g1", "members": ["p1", "v1"], "hub": "p1",
+        "at": [80, 60], "size": [300, 180],
+    })
+    assert g.label is None
+    assert g.members == ["p1", "v1"]
+    assert g.hub == "p1"
+    assert g.at == (80, 60)
+    assert g.size == (300, 180)
+
+
+def test_group_optional_fields_default():
+    g = Group.model_validate({"id": "g2", "members": ["t1"], "at": [0, 0],
+                              "size": [300, 200]})
+    assert g.label is None and g.hub is None
+
+
+def test_group_label_optional_text():
+    g = Group.model_validate({
+        "id": "g1", "label": "Gruppe A", "members": ["p1"],
+        "at": [10, 10], "size": [100, 100],
+    })
+    assert g.label == "Gruppe A"
+
+
+def test_group_id_whitespace_rejected():
+    with pytest.raises(ValidationError, match="Whitespace"):
+        Group.model_validate({
+            "id": "g 1", "members": [], "at": [0, 0], "size": [10, 10],
+        })
+
+
+def test_group_at_must_be_two_numbers():
+    with pytest.raises(ValidationError, match="genau 2 Zahlen"):
+        Group.model_validate({
+            "id": "g", "members": [], "at": [1, 2, 3], "size": [10, 10],
+        })
+
+
+def test_group_at_negative_rejected():
+    with pytest.raises(ValidationError, match=">= 0"):
+        Group.model_validate({
+            "id": "g", "members": [], "at": [-1, 0], "size": [10, 10],
+        })
+
+
+def test_group_size_must_be_point():
+    with pytest.raises(ValidationError, match="genau 2 Zahlen"):
+        Group.model_validate({
+            "id": "g", "members": [], "at": [0, 0], "size": [10, 10, 5],
+        })
+
+
+def test_group_member_id_rejects_whitespace():
+    with pytest.raises(ValidationError, match="Whitespace"):
+        Group.model_validate({
+            "id": "g", "members": ["p 1"], "at": [0, 0], "size": [10, 10],
+        })
+
+
+def test_group_hub_id_validation():
+    with pytest.raises(ValidationError, match="Whitespace"):
+        Group.model_validate({
+            "id": "g", "members": [], "hub": "h 1",
+            "at": [0, 0], "size": [10, 10],
+        })
+
+
+def test_schema_groups_field_defaults_empty():
+    s = Schema.model_validate({
+        "version": "plantschema/v1",
+        "canvas": {"width": 800, "height": 500},
+    })
+    assert s.groups == []
+
+
+def test_schema_groups_populated():
+    s = Schema.model_validate({
+        "version": "plantschema/v1",
+        "canvas": {"width": 800, "height": 500},
+        "components": [{"id": "p1", "type": "pump", "at": [0, 0]}],
+        "groups": [{
+            "id": "g1", "label": "A", "members": ["p1"], "hub": "p1",
+            "at": [0, 0], "size": [200, 100],
+        }],
+    })
+    assert len(s.groups) == 1
+    assert s.groups[0].id == "g1"
+    assert s.groups[0].hub == "p1"

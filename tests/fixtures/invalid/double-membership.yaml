@@ -1,0 +1,26 @@
+# S4-L1-Negativ-Fixture (R-35): doppelte Mitgliedschaft
+# (Komponente p1 ist Mitglied von g1 UND g2)
+# → validate-Problem `group-double-membership`, CLI exit 2.
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+
+components:
+  - id: p1
+    type: pump
+    at: [150, 150]
+  - id: p2
+    type: pump
+    at: [400, 150]
+  - id: t1
+    type: tank-buffer
+    at: [600, 300]
+
+groups:
+  - id: g1
+    members: [p1, p2]
+    at: [80, 80]
+    size: [300, 150]
+  - id: g2
+    members: [p1, t1]
+    at: [400, 250]
+    size: [300, 150]

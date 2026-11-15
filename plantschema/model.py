@@ -23,6 +23,7 @@ from pydantic import (
 __all__ = [
     "Canvas",
     "Component",
+    "Group",
     "Label",
     "LabelSpec",
     "Pipe",
@@ -153,6 +154,43 @@ class Component(_Model):
         return check_id(v, "component.id")
 
 
+class Group(_Model):
+    """Makro-Gruppe (S4-L1, R-35): logische Komponentengruppe mit
+    Autor-definierter Makro-Box-Geometrie.
+
+    - `at`/`size` PFLLICHT (Makro-Geometrie, Autor-Kanon): obere-linke
+      Ecke + Breite/Höhe der gestrichelten Gruppen-Box; alle Werte
+      müssen > 0 sein (Validierungs-Problem `group-geometry`, R-35).
+    - `members` = Member-Komponenten-IDs (Referenz-Checks in `validate`).
+    - `hub` = optionale Zentralkomponente (muss ∈ `members`, falls gesetzt);
+      Mikro-Layout-Verankerung für S4-L2 (R-36 folgt).
+    """
+
+    id: str
+    label: str | None = None
+    members: list[str]
+    hub: str | None = None
+    at: Point
+    size: Point
+
+    @field_validator("id")
+    @classmethod
+    def _v_id(cls, v: str) -> str:
+        return check_id(v, "group.id")
+
+    @field_validator("members")
+    @classmethod
+    def _v_members(cls, v: list[str]) -> list[str]:
+        for m in v:
+            check_id(m, "group.members[]")
+        return v
+
+    @field_validator("hub")
+    @classmethod
+    def _v_hub(cls, v: str | None) -> str | None:
+        return check_id(v, "group.hub") if v is not None else None
+
+
 class PortRef(_Model):
     """Anschluss-Referenz: Komponente + Port-Name."""
 
@@ -281,6 +319,7 @@ class Schema(_Model):
     canvas: Canvas
     components: list[Component] = Field(default_factory=list)
     pipes: list[Pipe] = Field(default_factory=list)
+    groups: list[Group] = Field(default_factory=list)
     readouts: list[Readout] = Field(default_factory=list)
     labels: list[Label] = Field(default_factory=list)
 

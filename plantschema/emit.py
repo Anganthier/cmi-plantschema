@@ -3,7 +3,9 @@
 Regeln (Kanon, `docs/model-reference.md` § Determinismus):
 - Festes Attribut-Reihenfolge (Insertion-Order, ElementTree ≥ Py3.8).
 - KEIN Zeitstempel, keine Zufalls-IDs.
-- Layer-Reihenfolge: Hintergrund → Pipes → Komponenten → Readouts → Labels.
+- Layer-Reihenfolge: Hintergrund → Gruppen-Boxen → Pipes → Komponenten
+  → Readouts → Labels (Gruppen-Boxen unterhalb aller Zonen-Behälter,
+  S4-L1, R-35 — überdecken nichts).
 - Stabile ID-Verträge: `comp-*`, `pipe-*`, `readout-*`, `lbl-*`.
 - S2: P&ID-Symbole via `<defs>` aus `symbols.render_defs()` (Seed cmi
   `ui/svg/pid-symbols.svg`); Komponenten = `symbols.render_component`
@@ -28,6 +30,7 @@ from .route import PipeGeometry, arrow_d, port_position, route_pipe
 from .symbols import render_component, render_defs
 
 __all__ = [
+    "GB_LBL_FONT",
     "LABEL_FONT",
     "RO_LBL_FONT",
     "RO_VAL_FONT",
@@ -36,6 +39,9 @@ __all__ = [
     "compute_layout",
     "render",
 ]
+
+#: Gruppen-Box-Label-Font (S4-L1, R-35): kleine, gedämpfte Schrift.
+GB_LBL_FONT: int = 12
 
 #: SVG-Namespace (in den Root-Tag injiziert; ElementTree kennt keinen Default-NS).
 _SVG_NS = "http://www.w3.org/2000/svg"
@@ -69,6 +75,8 @@ _CSS = (
     ".comp{stroke:#94a3b8;fill:none;stroke-width:1.8}\n"
     ".comp-ph{stroke:#94a3b8;fill:none;stroke-width:1.8}\n"
     ".port{fill:#e2e8f0;stroke:none}\n"
+    ".gbox{fill:none;stroke:rgba(140,160,200,0.25);stroke-width:1.2;stroke-dasharray:6 4}\n"
+    ".gbox-lbl{fill:#8fa0bd;font-size:12px;font-family:system-ui,sans-serif;opacity:0.85}\n"
 )
 
 
@@ -120,9 +128,30 @@ def build_svg(
     })
 
     layers: dict[str, ET.Element] = {}
-    layer_names = ("layer-pipes", "layer-components", "layer-readouts", "layer-labels")
+    layer_names = (
+        "layer-groups", "layer-pipes", "layer-components",
+        "layer-readouts", "layer-labels",
+    )
     for name in layer_names:
         layers[name] = ET.SubElement(root, "g", {"id": name})
+
+    # Gruppen-Boxen (Schema-Reihenfolge, S4-L1, R-35): gestrichelte
+    # Makro-Box (`.gbox`, kein Fill) + optionales Label (`.gbox-lbl`,
+    # oben links in der Box, Offset 8 px). Unterhalb der Zonen-Behälter.
+    lg = layers["layer-groups"]
+    for g in schema.groups:
+        x, y = g.at
+        box = ET.SubElement(lg, "g", {"id": f"group-{g.id}"})
+        if g.hub:
+            box.set("data-hub", g.hub)
+        ET.SubElement(box, "rect", {
+            "class": "gbox", "x": str(x), "y": str(y),
+            "width": str(g.size[0]), "height": str(g.size[1]),
+        })
+        if g.label:
+            ET.SubElement(box, "text", {
+                "class": "gbox-lbl", "x": str(x + 8), "y": str(y + 14),
+            }).text = g.label
 
     # Pipes (Schema-Reihenfolge) + Pfeil-Endpunkte (R-29).
     lp = layers["layer-pipes"]

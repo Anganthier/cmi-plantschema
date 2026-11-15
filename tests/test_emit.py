@@ -210,14 +210,100 @@ def test_readout_side_default_right(minimal_schema):
 def test_layer_order(minimal_schema):
     root = ET.fromstring(_svg(minimal_schema))
     children = [el.tag for el in root]
-    # Hintergrund-Rect, dann die 4 Layer in fester Reihenfolge.
-    layer_idx = [children.index(f"{NS}g") for _ in range(4)]
+    # Hintergrund-Rect, dann die 5 Layer in fester Reihenfolge
+    # (S4-L1: layer-groups unterhalb der Zonen-Behälter).
+    layer_idx = [children.index(f"{NS}g") for _ in range(5)]
     assert layer_idx == sorted(layer_idx)
     # IDs der Layer in Dokument-Reihenfolge:
     layer_ids = [el.get("id") for el in root if el.tag == f"{NS}g"]
-    assert layer_ids[:4] == [
-        "layer-pipes", "layer-components", "layer-readouts", "layer-labels",
+    assert layer_ids[:5] == [
+        "layer-groups", "layer-pipes", "layer-components",
+        "layer-readouts", "layer-labels",
     ]
+
+
+# ----------------------------------------------------- S4-L1 (R-35):
+# Gruppen-Boxen (`.gbox`) + Label (`.gbox-lbl`) + Layer-Z-Order.
+
+
+def _groups_schema() -> Schema:
+    return Schema.model_validate({
+        "version": "plantschema/v1",
+        "canvas": {"width": 800, "height": 500},
+        "components": [
+            {"id": "p1", "type": "pump", "at": [150, 150]},
+            {"id": "t1", "type": "tank-buffer", "at": [450, 300]},
+        ],
+        "groups": [
+            {"id": "g1", "label": "Gruppe A", "members": ["p1"],
+             "hub": "p1", "at": [80, 60], "size": [300, 180]},
+            {"id": "g2", "members": ["t1"], "at": [380, 190],
+             "size": [300, 220]},
+        ],
+    })
+
+
+def test_group_boxes_emitted():
+    root = ET.fromstring(emit.render(_groups_schema()))
+    lg = root.find(f".//{NS}g[@id='layer-groups']")
+    assert lg is not None
+    boxes = lg.findall(f"{NS}g")
+    assert [b.get("id") for b in boxes] == ["group-g1", "group-g2"]
+    b1 = boxes[0]
+    assert b1.get("data-hub") == "p1"
+    rect = b1.find(f"{NS}rect")
+    assert rect is not None
+    assert rect.get("class") == "gbox"
+    assert (rect.get("x"), rect.get("y")) == ("80", "60")
+    assert (rect.get("width"), rect.get("height")) == ("300", "180")
+    # g2: kein data-hub (hub nicht gesetzt).
+    assert boxes[1].get("data-hub") is None
+
+
+def test_group_label_emitted_only_when_set():
+    root = ET.fromstring(emit.render(_groups_schema()))
+    lg = root.find(f".//{NS}g[@id='layer-groups']")
+    boxes = lg.findall(f"{NS}g")
+    # g1: Label „Gruppe A" → .gbox-lbl, oben links in der Box
+    # (x = 80 + 8, y = 60 + 14).
+    txt = boxes[0].find(f"{NS}text")
+    assert txt is not None
+    assert txt.get("class") == "gbox-lbl"
+    assert txt.text == "Gruppe A"
+    assert (txt.get("x"), txt.get("y")) == ("88", "74")
+    # g2: kein Label → kein Text-Element.
+    assert boxes[1].find(f"{NS}text") is None
+
+
+def test_group_layer_below_zone_layers():
+    """Z-Order (R-35): layer-groups vor layer-pipes (Boxen überdecken
+    weder Pipes noch Labels/Komponenten)."""
+    root = ET.fromstring(emit.render(_groups_schema()))
+    layer_ids = [el.get("id") for el in root if el.tag == f"{NS}g"]
+    assert layer_ids.index("layer-groups") < layer_ids.index("layer-pipes")
+    assert layer_ids.index("layer-groups") < layer_ids.index("layer-labels")
+
+
+def test_group_box_style_block():
+    svg = emit.render(_groups_schema())
+    assert ".gbox{fill:none;stroke:rgba(140,160,200,0.25);" in svg
+    assert "stroke-dasharray:6 4" in svg  # .gbox + .ctl (cmi-Kanon)
+    assert ".gbox-lbl{" in svg
+    assert "GB_LBL" not in svg  # Font nur als Konstante, nicht im Artefakt
+
+
+def test_group_box_deterministic():
+    a = emit.render(_groups_schema())
+    b = emit.render(_groups_schema())
+    assert hashlib.sha256(a.encode()).hexdigest() == \
+        hashlib.sha256(b.encode()).hexdigest()
+
+
+def test_no_groups_no_layer_content(minimal_schema):
+    root = ET.fromstring(_svg(minimal_schema))
+    lg = root.find(f".//{NS}g[@id='layer-groups']")
+    assert lg is not None
+    assert len(list(lg)) == 0
 
 
 def test_pipe_flow_data_attribute():

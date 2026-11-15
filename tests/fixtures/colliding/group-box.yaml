@@ -1,0 +1,31 @@
+# S4-L1-Negativ-Fixture (R-35): zwei Makro-Gruppen-Boxen überlappen
+# (g1: 50..450, g2: 200..600 → Overlap = 250×400 px = 62,5 % der
+# kleineren Box, Schwelle > 50 %) → Gate exit 3 (GROUP-BOX),
+# Kollisionszeile `group-g1` × `group-g2`. Alle übrigen Checks sauber:
+# keine Pipes/Labels, Komponenten in separaten Box-Bereichen.
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+
+components:
+  - id: p1
+    type: pump
+    at: [120, 120]
+  - id: p2
+    type: pump
+    at: [600, 120]
+  - id: t1
+    type: tank-buffer
+    at: [120, 320]
+  - id: b1
+    type: boiler-oil
+    at: [600, 320]
+
+groups:
+  - id: g1
+    members: [p1, t1]
+    at: [50, 50]
+    size: [400, 400]
+  - id: g2
+    members: [p2, b1]
+    at: [200, 50]
+    size: [400, 400]

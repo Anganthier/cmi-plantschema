@@ -31,14 +31,20 @@ class Problem:
 
 
 def _check_ids(schema: Schema, out: list[Problem]) -> None:
-    """(a) IDs eindeutig über alle Arten (component/pipe/readout/label)."""
+    """(a) IDs eindeutig über alle Arten (component/pipe/readout/label/
+    group, S4-L1: zusätzlich `group-id-duplicate`)."""
     seen: dict[str, tuple[str, int]] = {}
     for path_kind, i, ident in _all_id_refs(schema):
         if ident in seen:
             kind0, i0 = seen[ident]
+            code = (
+                "group-id-duplicate"
+                if kind0 == "groups" and path_kind == "groups"
+                else "dup-id"
+            )
             out.append(
                 Problem(
-                    "dup-id",
+                    code,
                     f"doppelte ID {ident!r} (bereits {kind0}[{i0}])",
                     f"{path_kind}[{i}].id",
                 )
@@ -52,6 +58,8 @@ def _all_id_refs(schema: Schema) -> Iterable[tuple[str, int, str]]:
         yield "components", i, c.id
     for i, p in enumerate(schema.pipes):
         yield "pipes", i, p.id
+    for i, g in enumerate(schema.groups):
+        yield "groups", i, g.id
     for i, r in enumerate(schema.readouts):
         yield "readouts", i, r.id
     for i, lbl in enumerate(schema.labels):
@@ -239,6 +247,62 @@ def _check_component_types(schema: Schema, out: list[Problem]) -> None:
                     )
 
 
+def _check_groups(schema: Schema, out: list[Problem]) -> None:
+    """(h) Gruppen (S4-L1, R-35): Member-/Hub-Referenzen,
+    Doppel-Mitgliedschaft, Makro-Box-Geometrie (> 0).
+
+    Gruppen-IDs: doppelte Group-IDs (nur Group×Group) →
+    `group-id-duplicate` (via `_check_ids`); Group×fremd-ID bleibt
+    `dup-id` (R-5: IDs eindeutig über alle Arten).
+    """
+    comp_ids = schema.component_ids
+    member_owners: dict[str, int] = {}
+    for i, g in enumerate(schema.groups):
+        base = f"groups[{i}]"
+        for m in g.members:
+            if m not in comp_ids:
+                out.append(Problem(
+                    "group-member-ref",
+                    f"Member {m!r} existiert nicht als Komponente",
+                    f"{base}.members",
+                ))
+            else:
+                owner = member_owners.setdefault(m, i)
+                if owner != i:
+                    out.append(Problem(
+                        "group-double-membership",
+                        f"Komponente {m!r} ist Mitglied zweier Gruppen "
+                        f"(groups[{owner}] und groups[{i}])",
+                        f"{base}.members",
+                    ))
+        if g.hub is not None:
+            if g.hub not in comp_ids:
+                out.append(Problem(
+                    "group-hub-ref",
+                    f"Hub {g.hub!r} existiert nicht als Komponente",
+                    f"{base}.hub",
+                ))
+            elif g.hub not in g.members:
+                out.append(Problem(
+                    "group-hub-not-member",
+                    f"Hub {g.hub!r} muss ∈ members sein "
+                    f"(members: {', '.join(g.members)})",
+                    f"{base}.hub",
+                ))
+        if g.at[0] <= 0 or g.at[1] <= 0:
+            out.append(Problem(
+                "group-geometry",
+                f"group.at muss > 0 sein (ist: {g.at!r})",
+                f"{base}.at",
+            ))
+        if g.size[0] <= 0 or g.size[1] <= 0:
+            out.append(Problem(
+                "group-geometry",
+                f"group.size muss > 0 sein (ist: {g.size!r})",
+                f"{base}.size",
+            ))
+
+
 def _find_component(schema: Schema, comp_id: str) -> Component | None:
     for c in schema.components:
         if c.id == comp_id:
@@ -264,6 +328,7 @@ def validate(schema: Schema) -> list[Problem]:
     _check_component_types(schema, out)
     ports = _ports_by_comp(schema)
     _check_pipe_refs(schema, ports, out)
+    _check_groups(schema, out)
     _check_readouts(schema, ports, out)
     _check_label_refs(schema, ports, out)
     _check_labels(schema, out)

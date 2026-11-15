@@ -16,14 +16,19 @@ Geprüft (cmi-`svg_layout_check.py`-Kanon, Bounding-Box-Heuristik):
 - **Readout-Größen-Gate** (`readout-size`): emittierter Readout-Text:
   Wert ≥ `VALUE_FONT_MIN` (12 px), Label ≥ `LABEL_FONT_MIN` (11 px)
   (S3: harte Gate-Prüfung der Konstanten aus `place.py`).
+- **GROUP-BOX** (`group-box`, S4-L1, R-35): Overlap zweier Makro-
+  Gruppen-Boxen (AABB) → Kollision; gleiche `OVERLAP_THRESHOLD`-
+  Methodik wie die Text-Box-Edge-Checks (> 50 % der kleineren Box-
+  Fläche). (GROUP-BOX×COMPONENT und ×LABEL folgen in S4-L3 — nicht
+  Teil dieses Gates.)
 
 Kanon: `WIDTH_FACTOR=0.52`, `HEIGHT_FACTOR=1.2`, Sampling 5 px
 (cmi `sample_segment`); `text-anchor`-Korrektur in der BBox
 (`end` → x−width, `middle` → x−width/2; cmi `text_bbox`-Logik).
 
-API: `detect_collisions(schema, components, pipes, readouts, labels)`
-— S1-Signatur `detect_collisions(texts, pipes)` bleibt als Alias
-(bestehende S1/S2-Tests grün).
+API: `detect_collisions(texts, pipes, components=(), readouts=(),
+labels=(), groups=())` — S1-Signatur `detect_collisions(texts, pipes)`
+bleibt als Alias (bestehende S1/S2-Tests grün).
 """
 
 from __future__ import annotations
@@ -32,7 +37,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from .model import Component, Label, Readout, Schema
+from .model import Component, Group, Label, Readout, Schema
 from .place import TXT_FONT, _text_bbox
 from .route import PipeGeometry
 from .symbols import component_bounds
@@ -46,6 +51,7 @@ __all__ = [
     "estimate_width",
     "text_bbox",
     "overlap_area",
+    "group_box",
     "detect_collisions",
 ]
 
@@ -83,7 +89,8 @@ class TextElem:
 class Collision:
     """Eine erkannte Kollision (Gate-Report-Zeile, R-34-Format)."""
 
-    kind: str  # "text-text" | "line-text" | "text-box-edge" | "symbol-text" | "readout-size"
+    kind: str  # "text-text" | "line-text" | "text-box-edge" | "symbol-text"
+    #            | "readout-size" | "group-box" (S4-L1, R-35)
     elem_a: str
     elem_b: str
     x: int
@@ -149,6 +156,41 @@ def _sample_segment(
     return [(p1[0] + dx * i / n, p1[1] + dy * i / n) for i in range(n + 1)]
 
 
+def group_box(g: Group) -> tuple[float, float, float, float]:
+    """Makro-Box-BBox einer Gruppe (S4-L1, R-35): `at` = obere linke
+    Ecke, `size` = Breite/Höhe (Kanon: > 0, geprüft in `validate`)."""
+    x, y = g.at
+    return (float(x), float(y), float(x + g.size[0]), float(y + g.size[1]))
+
+
+def _check_group_boxes(
+    groups: Sequence[Group], out: list[Collision]
+) -> None:
+    """GROUP-BOX-Gate (S4-L1, R-35): Overlap zweier Makro-Boxen (AABB).
+
+    Gleiche `OVERLAP_THRESHOLD`-Methodik wie TEXT×BOX-Kante/USE×TEXT:
+    Kollision, wenn der Overlap-Anteil der **kleineren** Box-Fläche
+    > 50 % liegt; darunter = Boxen neben/über Eck erlaubt. Eine
+    Kollision pro (A, B)-Paar, deterministische Schema-Reihenfolge.
+    """
+    boxes = [(g, group_box(g)) for g in groups]
+    for i in range(len(boxes)):
+        a, ba = boxes[i]
+        for j in range(i + 1, len(boxes)):
+            b, bb = boxes[j]
+            ov = _overlap_area(ba, bb)
+            ref = min(_area(ba), _area(bb))
+            if ref > 0 and ov > OVERLAP_THRESHOLD * ref:
+                out.append(Collision(
+                    "group-box",
+                    f"group-{a.id}", f"group-{b.id}",
+                    int(round(ba[0])), int(round(ba[1])),
+                    f"Gruppen-Boxen überlappen zu "
+                    f"{100.0 * ov / ref:.0f} % (Schwelle "
+                    f"{OVERLAP_THRESHOLD * 100.0:.0f} %, R-35)",
+                ))
+
+
 def _check_readout_size(texts: Sequence[TextElem], out: list[Collision]) -> None:
     """Readout-Größen-Gate (R-34): Wert ≥ 12 px, Label ≥ 11 px."""
     from .place import LABEL_FONT_MIN, VALUE_FONT_MIN
@@ -175,6 +217,7 @@ def detect_collisions(
     components: Sequence[Component] = (),
     readouts: Sequence[Readout] = (),
     labels: Sequence[Label] = (),
+    groups: Sequence[Group] = (),
 ) -> list[Collision]:
     """Alle S3-Kollisionen (deterministisch: Eingabe-Reihenfolge).
 
@@ -186,6 +229,8 @@ def detect_collisions(
       die Text-BBs kommen aus `texts`, die hier autoritativ ist —
       `__main__._pipeline` buildet sie aus Readouts/Labels/Emissions-
       Klassen).
+    - `groups` (S4-L1, R-35): Gruppe-Liste → Makro-Boxen (`at`/`size`)
+      → GROUP-BOX-Overlap-Check (Kollision nur bei > 50 % Overlap).
     """
     component_boxes: dict[str, tuple[float, float, float, float]] | None = (
         {c.id: component_bounds(c.type, c.at) for c in components}
@@ -193,16 +238,17 @@ def detect_collisions(
         else None
     )
     _ = readouts, labels  # R-34-API-Vertrag (s. Docstring)
-    return _detect(texts, pipes, component_boxes)
+    return _detect(texts, pipes, component_boxes, groups)
 
 
 def _detect(
     texts: Sequence[TextElem],
     pipes: Sequence[PipeGeometry],
     component_boxes: dict[str, tuple[float, float, float, float]] | None,
+    groups: Sequence[Group] = (),
 ) -> list[Collision]:
-    """S3-Check-Set (R-34): TEXT×TEXT, LINE×TEXT, TEXT×BOX-Kante,
-    USE×TEXT, Readout-Größe."""
+    """S3-Check-Set (R-34) + S4-L1-Gruppe-Check (R-35): TEXT×TEXT,
+    LINE×TEXT, TEXT×BOX-Kante, USE×TEXT, Readout-Größe, GROUP-BOX."""
     out: list[Collision] = []
     boxes = [(t, text_bbox(t)) for t in texts if t.text]
 
@@ -262,6 +308,9 @@ def _detect(
 
     # 5) Readout-Größen-Gate (R-34).
     _check_readout_size(texts, out)
+
+    # 6) GROUP-BOX-Overlap (S4-L1, R-35).
+    _check_group_boxes(groups, out)
     return out
 
 

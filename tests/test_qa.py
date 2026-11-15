@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from plantschema.model import Component, Pipe
+from plantschema.model import Component, Group, Pipe
 from plantschema.qa import (
     HEIGHT_FACTOR,
     Collision,
     TextElem,
     detect_collisions,
     estimate_width,
+    group_box,
     overlap_area,
     text_bbox,
 )
@@ -213,6 +214,90 @@ def test_symbol_text_deduplicated_one_per_pair():
     cols = detect_collisions([t], [], components=[p])
     assert len(cols) == 1
     assert cols[0].kind == "text-box-edge"
+
+
+# ------------------------------------------------------ S4-L1 (R-35):
+# GROUP-BOX-Gate (Overlap zweier Makro-Boxen, > 50 % der kleineren Box).
+
+
+def _group(gid: str, at: tuple[int, int], size: tuple[int, int]) -> Group:
+    return Group.model_validate({
+        "id": gid, "members": [], "at": list(at), "size": list(size),
+    })
+
+
+def test_group_box_kanon():
+    g = _group("g1", (80, 60), (300, 180))
+    assert group_box(g) == (80.0, 60.0, 380.0, 240.0)
+
+
+def test_group_box_overlap_collides():
+    # g1: 50..450, g2: 200..600 → Overlap = 250×400 px = 62,5 % der
+    # kleineren Box (400×400) (> 50 %) → Kollision.
+    g1 = _group("g1", (50, 50), (400, 400))
+    g2 = _group("g2", (200, 50), (400, 400))
+    cols = detect_collisions([], [], groups=[g1, g2])
+    assert len(cols) == 1
+    c = cols[0]
+    assert c.kind == "group-box"
+    assert {c.elem_a, c.elem_b} == {"group-g1", "group-g2"}
+    assert c.x == 50 and c.y == 50
+    assert "R-35" in c.note
+    assert c.line().startswith("GROUP-BOX")
+
+
+def test_group_box_no_overlap_clean():
+    g1 = _group("g1", (0, 0), (100, 100))
+    g2 = _group("g2", (200, 0), (100, 100))
+    assert detect_collisions([], [], groups=[g1, g2]) == []
+
+
+def test_group_box_touching_edges_clean():
+    # Exakt aneinanderliegende Kanten (Overlap 0) → keine Kollision.
+    g1 = _group("g1", (0, 0), (100, 100))
+    g2 = _group("g2", (100, 0), (100, 100))
+    assert detect_collisions([], [], groups=[g1, g2]) == []
+
+
+def test_group_box_below_threshold_clean():
+    # 400×400 × 100×100, Overlap 50×100 = 50 % der kleineren Box
+    # (nicht > 50 %) → „Boxen über Eck erlaubt" (R-35-Schwelle).
+    g1 = _group("g1", (0, 0), (400, 400))
+    g2 = _group("g2", (350, 0), (100, 100))
+    assert detect_collisions([], [], groups=[g1, g2]) == []
+
+
+def test_group_box_threshold_exceeds_collides():
+    # Überstand 390 px → Overlap 60×100 = 60 % der kleineren Box
+    # (> 50 %) → Kollision (Schwellen-Grenze).
+    g1 = _group("g1", (0, 0), (400, 400))
+    g2 = _group("g2", (340, 0), (100, 100))
+    cols = detect_collisions([], [], groups=[g1, g2])
+    assert [c.kind for c in cols] == ["group-box"]
+
+
+def test_group_box_one_per_pair_deterministic():
+    # 3 Gruppen → C(3,2) = 3 Kollisionen, Schema-Reihenfolge
+    # (jedes Paar > 50 % der kleineren Box).
+    g1 = _group("g1", (50, 50), (400, 400))
+    g2 = _group("g2", (150, 100), (400, 400))
+    g3 = _group("g3", (100, 200), (400, 400))
+    cols = detect_collisions([], [], groups=[g1, g2, g3])
+    assert [c.kind for c in cols] == ["group-box", "group-box", "group-box"]
+    pairs = {(c.elem_a, c.elem_b) for c in cols}
+    assert pairs == {
+        ("group-g1", "group-g2"), ("group-g1", "group-g3"),
+        ("group-g2", "group-g3"),
+    }
+
+
+def test_group_box_single_group_never_collides():
+    g1 = _group("g1", (0, 0), (400, 400))
+    assert detect_collisions([], [], groups=[g1]) == []
+
+
+def test_group_box_empty_groups_default_clean():
+    assert detect_collisions([], []) == []
 
 
 def test_dedup_two_components_one_collision_each():

@@ -221,8 +221,173 @@ def _schema(**overrides) -> Schema:
         "canvas": {"width": 800, "height": 500},
         "components": [],
         "pipes": [],
+        "groups": [],
         "readouts": [],
         "labels": [],
     }
     base.update(overrides)
     return Schema.model_validate(base)
+
+
+# ------------------------------------------------------------ S4-L1 (R-35):
+# Group-Problem-Codes (group-id-duplicate, group-member-ref,
+# group-hub-ref, group-hub-not-member, group-double-membership,
+# group-geometry).
+
+
+def _pump(i: int) -> dict:
+    return {"id": f"p{i}", "type": "pump", "at": [100 * i + 50, 100]}
+
+
+def test_group_id_duplicate():
+    s = _schema(
+        components=[_pump(1)],
+        groups=[
+            {"id": "g", "members": ["p1"], "at": [0, 0], "size": [100, 100]},
+            {"id": "g", "members": ["p1"], "at": [0, 0], "size": [100, 100]},
+        ],
+    )
+    problems = [p for p in validate.validate(s) if p.code == "group-id-duplicate"]
+    assert len(problems) == 1
+    assert "groups[1].id" in problems[0].path
+
+
+def test_group_id_duplicate_cross_kind_stays_dup_id():
+    # R-5: ID-Kollision Group×Pipe bleibt `dup-id` (nur Group×Group =
+    # `group-id-duplicate`).
+    s = _schema(
+        pipes=[{
+            "id": "g",
+            "from": {"comp": "p1", "port": "in"},
+            "to": {"comp": "p1", "port": "out"},
+            "kind": "vl",
+        }],
+        components=[_pump(1)],
+        groups=[{"id": "g", "members": ["p1"], "at": [0, 0], "size": [100, 100]}],
+    )
+    codes = [p.code for p in validate.validate(s)]
+    assert "dup-id" in codes
+    assert "group-id-duplicate" not in codes
+
+
+def test_group_member_ref_missing_component():
+    s = _schema(
+        groups=[
+            {"id": "g1", "members": ["p1", "ghost"], "at": [0, 0],
+             "size": [100, 100]},
+        ],
+        components=[_pump(1)],
+    )
+    problems = [p for p in validate.validate(s) if p.code == "group-member-ref"]
+    assert len(problems) == 1
+    assert "ghost" in problems[0].message
+    assert "groups[0].members" in problems[0].path
+
+
+def test_group_hub_ref_missing_component():
+    s = _schema(
+        components=[_pump(1)],
+        groups=[
+            {"id": "g1", "members": ["p1"], "hub": "ghost",
+             "at": [0, 0], "size": [100, 100]},
+        ],
+    )
+    problems = [p for p in validate.validate(s) if p.code == "group-hub-ref"]
+    assert len(problems) == 1
+    assert "ghost" in problems[0].message
+    assert "groups[0].hub" in problems[0].path
+
+
+def test_group_hub_not_member():
+    s = _schema(
+        components=[_pump(1), _pump(2)],
+        groups=[
+            {"id": "g1", "members": ["p1"], "hub": "p2",
+             "at": [0, 0], "size": [100, 100]},
+        ],
+    )
+    problems = [p for p in validate.validate(s)
+                if p.code == "group-hub-not-member"]
+    assert len(problems) == 1
+    assert "p2" in problems[0].message
+    assert "groups[0].hub" in problems[0].path
+
+
+def test_group_double_membership():
+    s = _schema(
+        components=[_pump(1), _pump(2)],
+        groups=[
+            {"id": "g1", "members": ["p1", "p2"], "at": [0, 0],
+             "size": [100, 100]},
+            {"id": "g2", "members": ["p2"], "at": [200, 0],
+             "size": [100, 100]},
+        ],
+    )
+    problems = [p for p in validate.validate(s)
+                if p.code == "group-double-membership"]
+    assert len(problems) == 1
+    assert "p2" in problems[0].message
+    assert "groups[1].members" in problems[0].path
+
+
+def test_group_geometry_size_zero():
+    s = _schema(
+        components=[_pump(1)],
+        groups=[
+            {"id": "g1", "members": ["p1"], "at": [10, 10],
+             "size": [0, 100]},
+        ],
+    )
+    problems = [p for p in validate.validate(s) if p.code == "group-geometry"]
+    assert len(problems) == 1
+    assert "size" in problems[0].message
+    assert "groups[0].size" in problems[0].path
+
+
+def test_group_geometry_at_zero_corner():
+    # at = (0,0) = Box in der Canvas-Ecke → nicht > 0 (R-35: Autor-Kanon
+    # verlangt Innenabstand, kein Eckpunkt).
+    s = _schema(
+        components=[_pump(1)],
+        groups=[
+            {"id": "g1", "members": ["p1"], "at": [0, 0], "size": [100, 100]},
+        ],
+    )
+    problems = [p for p in validate.validate(s) if p.code == "group-geometry"]
+    assert len(problems) == 1
+    assert "at" in problems[0].message
+    assert "groups[0].at" in problems[0].path
+
+
+def test_group_geometry_both_fields_reported():
+    s = _schema(
+        components=[_pump(1)],
+        groups=[
+            {"id": "g1", "members": ["p1"], "at": [0, 0], "size": [100, 0]},
+        ],
+    )
+    problems = [p for p in validate.validate(s) if p.code == "group-geometry"]
+    assert len(problems) == 2
+    assert {p.path for p in problems} == {"groups[0].at", "groups[0].size"}
+
+
+def test_group_valid_no_problems():
+    s = _schema(
+        components=[_pump(1), _pump(2)],
+        groups=[
+            {"id": "g1", "label": "A", "members": ["p1", "p2"], "hub": "p1",
+             "at": [40, 40], "size": [400, 200]},
+        ],
+    )
+    assert validate.validate(s) == []
+
+
+def test_double_membership_fixture_exit_code_problems():
+    # Negativ-Fixture: p1 ∈ g1 und g2 → genau group-double-membership.
+    from conftest import fx
+
+    from plantschema.io import load_schema
+
+    s = load_schema(fx("invalid-double-membership"))
+    problems = validate.validate(s)
+    assert [p.code for p in problems] == ["group-double-membership"]

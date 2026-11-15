@@ -85,6 +85,7 @@ def _run_gate(schema, no_gate: bool) -> int:
         components=schema.components,
         readouts=schema.readouts,
         labels=schema.labels,
+        groups=schema.groups,
     )
     if collisions:
         sys.stderr.write(f"{len(collisions)} Kollision(en):\n")
