@@ -60,19 +60,42 @@ def test_check_no_gate_suppresses(tmp_path):
 
 
 def test_render_exit0_rich_fixture(tmp_path):
-    """S2 E2E: Rich-Fixture (18 Typen + Pipes je kind + Readouts) rendert."""
+    """S3 E2E: Rich-Fixture rendert (Gate aktiv, 0 Kollisionen)."""
     out = tmp_path / "rich.svg"
-    rc, _ = call("render", "--in", str(fx("rich")), "--out", str(out),
-                 "--no-gate")
-    assert rc == EXIT_OK
+    rc, err = call("render", "--in", str(fx("rich")), "--out", str(out))
+    assert rc == EXIT_OK, err
     content = out.read_text(encoding="utf-8")
-    # S2-Struktur: P&ID-Symbole, Readout-Hooks, Pfeil-Endpunkte, Style.
+    # S2/S3-Struktur: P&ID-Symbole, Readout-Hooks, Pfeil-Endpunkte, Style.
     assert 'data-symbol="pid-tank-buffer"' in content
     assert 'data-symbol="pid-pump-cent"' in content
     assert 'href="#pid-pt"' in content
     assert "data-value-key" in content and "data-readout" in content
     assert 'class="pipe-arrow arrow-ctl"' in content
     assert ".ro-val{" in content and "stroke-dasharray:6 4" in content
+
+
+def test_check_exit3_text_box_edge():
+    """S3: text-box-Fixture → exit 3 + TEXT-BOX-EDGE-Zeile (R-34)."""
+    rc, err = call("check", "--in", str(fx("colliding-text-box")))
+    assert rc == EXIT_GATE
+    assert "TEXT-BOX-EDGE" in err
+    assert "lbl-lbl-tank-text" in err
+
+
+def test_check_exit3_symbol_text():
+    """S3: symbol-text-Fixture → exit 3 + SYMBOL-TEXT-Zeile (R-34)."""
+    rc, err = call("check", "--in", str(fx("colliding-symbol-text")))
+    assert rc == EXIT_GATE
+    assert "SYMBOL-TEXT" in err
+
+
+def test_check_rich_warn_block_exit0():
+    """S3 (R-33): Rich → Warnungs-Block (Slot-Fallbacks), Exit 0."""
+    rc, err = call("check", "--in", str(fx("rich")))
+    assert rc == EXIT_OK, err
+    assert "Warnung(en):" in err
+    assert "SLOT-FALLBACK" in err
+    assert "Kollision" not in err
 
 
 def test_render_exit2_invalid_no_write(tmp_path):

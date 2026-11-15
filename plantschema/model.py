@@ -241,10 +241,18 @@ class Readout(_Model):
 
 
 class Label(_Model):
-    """Freie Annotation (Zonen-Text, Legende-Item)."""
+    """Freie Annotation (Zonen-Text, Legende-Item).
+
+    S3 (R-32): Entweder exakte `at`-Koordinate (Override, gewinnt immer)
+    ODER `comp` (+ optional `port`) → Auto-Slot um die Host-Komponente
+    (4 Richtungen, Preference up → right → down → left, 8 px Mindestabstand).
+    Beides oder keines → Validierungsproblem `label-placement` (validate).
+    """
 
     id: str
-    at: Point
+    at: Point | None = None
+    comp: str | None = None
+    port: str | None = None
     text: str
     anchor: TextAnchor = TextAnchor.START
 
@@ -252,6 +260,18 @@ class Label(_Model):
     @classmethod
     def _v_id(cls, v: str) -> str:
         return check_id(v, "label.id")
+
+    @field_validator("comp")
+    @classmethod
+    def _v_comp(cls, v: str | None) -> str | None:
+        return check_id(v, "label.comp") if v is not None else None
+
+    @field_validator("port")
+    @classmethod
+    def _v_port(cls, v: str | None) -> str | None:
+        if v is not None and not _PORT_RE.fullmatch(v):
+            raise ValueError(f"label.port ungültig (ist: {v!r})")
+        return v
 
 
 class Schema(_Model):

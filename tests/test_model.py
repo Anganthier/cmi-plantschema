@@ -171,6 +171,33 @@ def test_label_anchor_enum():
     assert lbl.anchor is TextAnchor.MIDDLE
 
 
+def test_label_at_or_comp_exclusive_semantics():
+    """S3 (R-32): `at` ODER `comp` — Modell-Level: beide Felder optional;
+    das Entweder-oder prüft `validate` (Problem `label-placement`)."""
+    # comp-Form (ohne at):
+    lbl = Label.model_validate({"id": "z", "comp": "p", "text": "P"})
+    assert lbl.at is None and lbl.comp == "p" and lbl.port is None
+    # comp+port-Form:
+    lbl2 = Label.model_validate(
+        {"id": "z", "comp": "p", "port": "top", "text": "P"}
+    )
+    assert lbl2.port == "top"
+    # at-Form (S1-Verhalten):
+    lbl3 = Label.model_validate({"id": "z", "at": [3, 4], "text": "P"})
+    assert lbl3.comp is None and lbl3.at == (3, 4)
+
+
+def test_label_comp_id_validation():
+    with pytest.raises(ValidationError, match="Whitespace"):
+        Label.model_validate({"id": "z", "comp": "p x", "text": "P"})
+
+
+def test_label_port_lowercase_validation():
+    with pytest.raises(ValidationError, match="label.port ungültig"):
+        Label.model_validate({"id": "z", "comp": "p", "port": "Top",
+                              "text": "P"})
+
+
 def test_check_id_direct():
     assert check_id("a-b_c.1", "x") == "a-b_c.1"
     with pytest.raises(ValueError):

@@ -1,0 +1,14 @@
+# S3-Fixtures (Kollisions-Gate, R-34): Label direkt AUF einer Tank-
+# Komponente — Text-BBox > 50 % in der Symbol-BBox → text-box-edge-Kollision
+# (exit 3). Keine Pipe/Readout (nur die eine Kollision zählt).
+schema: plantschema/v1
+canvas: { width: 800, height: 500 }
+components:
+  - id: puffer
+    type: tank-buffer
+    at: [450, 300]
+labels:
+  - id: lbl-tank-text
+    at: [450, 300]
+    text: "Tank-Text"
+    anchor: middle

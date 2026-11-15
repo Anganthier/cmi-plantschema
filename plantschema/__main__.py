@@ -4,7 +4,8 @@ Exit-Codes (Kanon):
   0 = ok
   2 = Schema-/Validierungsfehler (Probleme nach Stderr, je Problem eine
       Zeile: `[line N] path: message`, bei unbekannter Zeile `[?]`)
-  3 = Gate-Fehler (Kollisionen, je Kollision eine Zeile)
+  3 = Gate-Fehler (Kollisionen, je Kollision eine Zeile; davor optional
+      der Warnungs-Block „N Warnung(en):" (R-33, Exit bleibt 0))
   4 = IO-Fehler (Datei fehlt/lesbar/ungültiges YAML)
 """
 
@@ -15,10 +16,11 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .emit import RO_LBL_FONT, RO_VAL_FONT, TXT_FONT, compute_layout, render
+from .emit import compute_layout, render
 from .io import SchemaLoadError, load_schema
 from .model import SchemaError
-from .qa import TextElem, detect_collisions
+from .place import collect_slot_warnings
+from .qa import detect_collisions, texts_for_schema
 from .validate import problem_lines, validate
 
 __all__ = ["build_parser", "main"]
@@ -58,35 +60,32 @@ def _print_schema_errors(exc: SchemaError) -> None:
     sys.stderr.write(exc.format() + "\n")
 
 
-def _pipeline(schema):
-    """route + place + qa-Input (deterministisch, Schema-Reihenfolge).
-
-    S2: Readout-Texte = Wert (`.ro-val`, 12 px) + Label (`.ro-lbl`, 11 px),
-    Position/Anker wie emittiert (16 px neben Symbol, `side` → anchor).
-    """
-    pipes, readout_pos = compute_layout(schema)
-    texts: list[TextElem] = []
-    for lbl in schema.labels:
-        x, y = lbl.at
-        texts.append(TextElem(f"lbl-{lbl.id}", lbl.text, TXT_FONT, x, y,
-                              lbl.anchor.value))
-    for r in schema.readouts:
-        x, y = readout_pos[r.id]
-        anchor = "start" if r.side == "right" else "end"
-        tx = x + (16 if r.side == "right" else -16)
-        texts.append(TextElem(f"readout-{r.id}.val", "–", RO_VAL_FONT, tx, y - 2,
-                              anchor))
-        texts.append(TextElem(f"readout-{r.id}.lbl", r.label, RO_LBL_FONT, tx,
-                              y + 14, anchor))
-    return pipes, texts
-
-
 def _run_gate(schema, no_gate: bool) -> int:
-    """Gate-Prüfung; Exit 0 (sauber) oder 3 (Kollisionen, Report)."""
+    """Gate-Prüfung (S3, R-34): Exit 0 (sauber) oder 3 (Kollisionen).
+
+    Report (R-34-Format): optionaler Warnungs-Block „N Warnung(en):"
+    (R-33-Slot-Fallbacks, Exit bleibt 0), dann je Kollision eine Zeile
+    `KIND  [elemA] × [elemB] @ (x,y) — Hinweis` + Summe; bei 0
+    Kollisionen: kein Kollisions-Block (Exit 0).
+    """
     if no_gate:
         return EXIT_OK
-    pipes, texts = _pipeline(schema)
-    collisions = detect_collisions(texts, pipes)
+    pipes, _readout_pos = compute_layout(schema)
+    texts = texts_for_schema(schema)
+    warnings = collect_slot_warnings(schema)
+    if warnings:
+        sys.stderr.write(f"{len(warnings)} Warnung(en):\n")
+        for w in warnings:
+            sys.stderr.write(
+                f"  SLOT-FALLBACK  [{w.elem_id}] @ comp-{w.comp_id} "
+                f"({w.direction}) — {w.note}\n"
+            )
+    collisions = detect_collisions(
+        texts, pipes,
+        components=schema.components,
+        readouts=schema.readouts,
+        labels=schema.labels,
+    )
     if collisions:
         sys.stderr.write(f"{len(collisions)} Kollision(en):\n")
         for c in collisions:

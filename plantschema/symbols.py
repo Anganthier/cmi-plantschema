@@ -31,14 +31,18 @@ __all__ = [
     "PortGeometry",
     "COMPONENT_PORTS",
     "LABEL_OFFSET",
+    "SYMBOL_BOUNDS",
     "SYMBOL_TYPES",
     "PIPE_PORT_TYPES",
+    "PLACEHOLDER_BOUNDS",
     "allowed_ports",
     "is_known_type",
     "known_types",
     "port_names",
     "port_offset",
     "symbol_id",
+    "symbol_bounds",
+    "component_bounds",
     "render_component",
     "render_defs",
 ]
@@ -455,6 +459,58 @@ _PLACEHOLDER_HALF: tuple[int, int] = (20, 20)
 
 _SYMBOL_CLASS = "sym"
 
+# ---------------------------------------------------------------------------
+# SYMBOL_BOUNDS (S3, R-34): Bounding-Box je Komponententyp, lokal um (0,0)
+# ---------------------------------------------------------------------------
+# Abgeleitet aus der cmi-Symbol-Geometrie (Seed `ui/svg/pid-symbols.svg`,
+# s. `docs/model-reference.md` § 5): BBox = Umschließung aller gezeichneten
+# Elemente (Rechtecke + Kreise + Stiele + Pfeil-Enden); `valve`-Alias nutzt
+# valve-2way. Platzhalter (unbekannter Typ) = S1-Fallback-Rect (±20).
+#: (x0, y0, x1, y1), lokal; absolut = comp.at + BBox.
+SYMBOL_BOUNDS: dict[str, tuple[int, int, int, int]] = {
+    "tank-buffer": (-30, -60, 30, 60),
+    "boiler-oil": (-28, -44, 28, 29),
+    "boiler-solid": (-28, -48, 28, 36),
+    "collector-solar": (-41, -14, 41, 14),
+    "heatex-plate": (-35, -15, 35, 18),
+    "heatex-shell": (-30, -11, 30, 20),
+    "mixing": (-14, -11, 14, 14),
+    "pump": (-20, -13, 20, 22),
+    "valve-2way": (-20, -21, 20, 10),
+    "valve-3way": (-20, -9, 20, 20),
+    "valve-globe": (-20, -22, 20, 10),
+    "valve-actuator": (-20, -35, 20, 10),
+    "throttle": (-20, -30, 20, 10),
+    "radiator": (-30, -13, 30, 13),
+    "tap": (-14, -7, 14, 23),
+    "chimney": (-14, -40, 18, 34),
+    "pt": (-8, -8, 8, 16),
+    "flow-switch": (-8, -8, 8, 16),
+}
+
+#: BBox des S1-Platzhalter-Rects (unbekannter Typ), lokal um (0,0).
+PLACEHOLDER_BOUNDS: tuple[int, int, int, int] = (-20, -20, 20, 20)
+
+
+def symbol_bounds(comp_type: str) -> tuple[int, int, int, int]:
+    """SYMBOL_BOUNDS eines Typs (Alias-aware); unbekannt → Platzhalter-Box."""
+    return SYMBOL_BOUNDS.get(
+        _PORT_ALIAS.get(comp_type, comp_type), PLACEHOLDER_BOUNDS
+    )
+
+
+def component_bounds(
+    comp_type: str, comp_at: tuple[int, int]
+) -> tuple[float, float, float, float]:
+    """Absolute Bounding-Box einer Komponente (float, für QA/Abstandschecks)."""
+    x0, y0, x1, y1 = symbol_bounds(comp_type)
+    return (
+        comp_at[0] + x0,
+        comp_at[1] + y0,
+        comp_at[0] + x1,
+        comp_at[1] + y1,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Zugriff
@@ -525,18 +581,24 @@ def _esc(value: str) -> str:
 
 
 def _label_elements(comp_type: str, comp_at: tuple[int, int], label: object) -> str:
-    """Label-Texte (`.txt-h` + sub `.txt-s`) oben über dem Symbol (R-30)."""
+    """Label-Texte (`.txt-h` + sub `.txt-s`) im up-Slot über dem Symbol
+    (S3, R-32: 8 px Mindestabstand zur Symbol-BBox; R-33-Fallback =
+    `LABEL_OFFSET`-Default via `place.collect_slot_warnings`)."""
     if label is None:
         return ""
     text: str = label.text  # type: ignore[union-attr]
     sub: str | None = getattr(label, "sub", None)
     cx, cy = comp_at
-    offset = LABEL_OFFSET.get(comp_type, _DEFAULT_LABEL_OFFSET)
+    # Deferred: place ↔ symbols (place nutzt symbols.SYMBOL_BOUNDS).
+    from .place import component_label_offset
+
+    n_lines = 2 if sub else 1
+    offset = component_label_offset(comp_type, comp_at, n_lines)
     y = cy - offset
     out = [f'<text class="txt-h" x="{cx}" y="{y}" text-anchor="middle">{_esc(text)}</text>']
     if sub:
         out.append(
-            f'<text class="txt-s" x="{cx}" y="{y + 14}" text-anchor="middle">'
+            f'<text class="txt-s" x="{cx}" y="{y + 17}" text-anchor="middle">'
             f"{_esc(sub)}</text>"
         )
     return "".join(out)

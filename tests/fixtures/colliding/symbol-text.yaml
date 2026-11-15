@@ -1,0 +1,16 @@
+# S3-Fixtures (Kollisions-Gate, R-34): Readout direkt ÜBER einem Symbol —
+# P&ID-Symbol-Körper × Text > 50 % Overlap-Anteil → symbol-text-Kollision
+# (exit 3). Readout-`at` = {x,y} (exakt auf dem Pump-Symbol, R-14).
+schema: plantschema/v1
+canvas: { width: 800, height: 500 }
+components:
+  - id: p1
+    type: pump
+    at: [400, 300]
+    label: { text: "P1" }
+readouts:
+  - id: a1
+    at: { x: 400, y: 300 }
+    label: "P-Überdeckung"
+    value_key: p1
+labels: []

@@ -172,6 +172,49 @@ def test_problem_dataclass_and_lines():
     assert problem_lines([p]) == [p.line()]
 
 
+def test_label_placement_both_or_neither():
+    """S3 (R-32): weder `at` noch `comp` → `label-placement`."""
+    s = _schema(labels=[{"id": "z", "text": "nur-Text"}])
+    problems = validate.validate(s)
+    assert [p.code for p in problems] == ["label-placement"]
+    assert "labels[id=z]" in problems[0].path
+
+
+def test_label_comp_ref_missing_component():
+    s = _schema(
+        labels=[{"id": "z", "comp": "ghost", "text": "Z"}],
+    )
+    problems = validate.validate(s)
+    codes = [p.code for p in problems]
+    assert "label-comp-ref" in codes
+    assert "labels[0].comp" in [p.path for p in problems if p.code == "label-comp-ref"][0]
+
+
+def test_label_port_ref_invalid_port():
+    s = _schema(
+        components=[{"id": "p", "type": "pump", "at": [0, 0]}],
+        labels=[{"id": "z", "comp": "p", "port": "flue", "text": "Z"}],
+    )
+    problems = validate.validate(s)
+    assert [p.code for p in problems] == ["label-port-ref"]
+    assert "labels[0].port" in problems[0].path
+
+
+def test_label_comp_with_port_valid():
+    s = _schema(
+        components=[{"id": "p", "type": "tank-buffer", "at": [100, 100]}],
+        labels=[{"id": "z", "comp": "p", "port": "top", "text": "Z"}],
+    )
+    assert validate.validate(s) == []
+
+
+def test_label_at_out_of_canvas_still_checked():
+    s = _schema(labels=[{"id": "z", "at": [801, 10], "text": "rand"}])
+    problems = validate.validate(s)
+    assert [p.code for p in problems] == ["out-of-canvas"]
+    assert "labels[id=z].at" in problems[0].path
+
+
 def _schema(**overrides) -> Schema:
     base = {
         "version": "plantschema/v1",

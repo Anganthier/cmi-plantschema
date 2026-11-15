@@ -155,10 +155,11 @@ def test_unknown_type_placeholder(minimal_schema):
     rect = comp.find(f"{NS}rect")
     assert rect is not None
     assert (rect.get("x"), rect.get("y")) == ("180", "180")
-    # Label (Default-Offset 32): y = 200 − 32 = 168.
+    # Label (S3 up-Slot: Platzhalter-Box halbe Höhe 20 + 8 px):
+    # y = 200 − 28 = 172.
     txt = comp.find(f"{NS}text")
     assert txt.get("class") == "txt-h"
-    assert txt.get("y") == "168"
+    assert txt.get("y") == "172"
 
 
 def test_readout_structure(minimal_schema):
@@ -248,14 +249,14 @@ def test_component_label_emitted(minimal_schema):
     root = ET.fromstring(_svg(minimal_schema))
     comp = root.find(f".//{NS}g[@id='comp-puffer']")
     texts = comp.findall(f"{NS}text")
-    # .txt-h (Haupt) + .txt-s (Sub), oben über dem Symbol (LABEL_OFFSET).
+    # .txt-h (Haupt) + .txt-s (Sub), S3 up-Slot (R-32): 2 Zeilen →
+    # Offset = halbe Symbolhöhe (60) + 20 px = 80, Sub +17 px.
     assert texts[0].get("class") == "txt-h"
     assert texts[0].text == "Puffer P"
     assert len(texts) == 2 and texts[1].get("class") == "txt-s"
     assert texts[1].text == "Zonen 1-3"
-    # Offset 72 (Tank): y = 250 − 72 = 178, Sub +14 = 192.
-    assert (texts[0].get("x"), texts[0].get("y")) == ("500", "178")
-    assert (texts[1].get("x"), texts[1].get("y")) == ("500", "192")
+    assert (texts[0].get("x"), texts[0].get("y")) == ("500", "170")
+    assert (texts[1].get("x"), texts[1].get("y")) == ("500", "187")
 
 
 def test_style_block_colors_and_classes(minimal_schema):

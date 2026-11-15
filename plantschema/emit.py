@@ -23,7 +23,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 from .model import Schema
-from .place import label_position, readout_position
+from .place import readout_position, resolve_label
 from .route import PipeGeometry, arrow_d, port_position, route_pipe
 from .symbols import render_component, render_defs
 
@@ -172,14 +172,17 @@ def build_svg(
         })
         tlbl.text = r.label
 
-    # Labels (Schema-Reihenfolge).
+    # Labels (Schema-Reihenfolge): `at` = exakt (Override); Auto-Slots
+    # (S3, R-32) mit Slot-Anker (up/down=middle, left/right=end/start).
     ll = layers["layer-labels"]
     for lbl in schema.labels:
-        pos = label_position(lbl)
+        pos, anchor = resolve_label(lbl, schema)
+        if pos is None:
+            continue  # Unbekannter Host (Validierungs-Problem liegt vor)
         ET.SubElement(ll, "text", {
             "id": f"lbl-{lbl.id}", "class": "txt",
             "x": str(pos[0]), "y": str(pos[1]),
-            "text-anchor": lbl.anchor.value,
+            "text-anchor": anchor,
         }).text = lbl.text
 
     body = ET.tostring(root, encoding="unicode")

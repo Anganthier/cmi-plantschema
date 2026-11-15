@@ -58,8 +58,9 @@ def test_render_component_uses_pid_symbol():
     assert '<g id="comp-p1" data-type="pump" data-loop="A" ' \
            'data-flow="a-vl" data-symbol="pid-pump-cent">' in out
     assert '<use href="#pid-pump-cent" x="100" y="200" class="sym"/>' in out
-    # Label oben über dem Symbol (LABEL_OFFSET: halbe Höhe + 12).
-    assert f'<text class="txt-h" x="100" y="{200 - symbols.LABEL_OFFSET["pump"]}" ' \
+    # S3 (R-32): Label im up-Slot = 8 px über der Symbol-Oberkante
+    # (pump-Box: top −13 → Offset = 13 + 8 = 21 → y = 179).
+    assert '<text class="txt-h" x="100" y="179" ' \
            'text-anchor="middle">O1</text>' in out
     assert "</g>" in out and out.count("<g ") == 1
 
@@ -70,9 +71,12 @@ def test_render_component_label_sub_and_escaping():
          "label": {"text": "H2 · Öl", "sub": "O5 ⚠ RISK"}}
     )
     out = symbols.render_component(c)
-    assert f'y="{235 - symbols.LABEL_OFFSET["boiler-oil"]}"' in out
+    # S3 (R-32): 2 Zeilen (mit Sub) → Offset = halbe Höhe (44) + 20 px.
+    assert f'y="{235 - 64}"' in out
     assert ">H2 · Öl</" in out
     assert "O5 ⚠ RISK" in out
+    # Sub 17 px unter der Haupt-Baseline (cmi-Text-BBox-Kanon).
+    assert f'y="{235 - 64 + 17}"' in out
 
 
 def test_render_component_placeholder_fallback():

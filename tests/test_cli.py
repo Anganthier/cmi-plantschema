@@ -79,9 +79,56 @@ def test_check_exit3_on_collision(tmp_path):
     assert "lbl-lbl-a" in r.stderr
 
 
+def test_check_exit3_text_box_edge(tmp_path):
+    """S3: Label auf Tank-Komponente → exit 3 + TEXT-BOX-EDGE-Zeile (R-34)."""
+    r = run_cli("check", "--in", str(fx("colliding-text-box")), cwd=tmp_path)
+    assert r.returncode == 3
+    assert "TEXT-BOX-EDGE" in r.stderr
+    assert "lbl-lbl-tank-text" in r.stderr
+    assert "comp-puffer" in r.stderr
+
+
+def test_check_exit3_symbol_text(tmp_path):
+    """S3: Readout über Symbol → exit 3 + SYMBOL-TEXT-Zeile (R-34)."""
+    r = run_cli("check", "--in", str(fx("colliding-symbol-text")), cwd=tmp_path)
+    assert r.returncode == 3
+    assert "SYMBOL-TEXT" in r.stderr
+    assert "readout-a1" in r.stderr
+    assert "comp-p1" in r.stderr
+
+
+def test_render_exit3_new_colliding_fixtures(tmp_path):
+    """S3: render (Gate) neuer Kollisions-Fixtures → exit 3 + Report."""
+    for name in ("colliding-text-box", "colliding-symbol-text"):
+        out = tmp_path / f"{name}.svg"
+        r = run_cli("render", "--in", str(fx(name)), "--out", str(out),
+                    cwd=tmp_path)
+        assert r.returncode == 3, f"{name}: {r.stderr}"
+        assert "Kollision(en):" in r.stderr
+        assert out.exists()  # SVG wird geschrieben, dann Gate schlägt
+
+
 def test_check_exit0_when_clean(tmp_path):
     r = run_cli("check", "--in", str(fx("minimal")), cwd=tmp_path)
     assert r.returncode == 0
+
+
+def test_check_exit0_rich_zero_collisions(tmp_path):
+    """S3-DoD: Rich-Fixture bleibt kollisionsfrei (0 Kollisionen)."""
+    r = run_cli("check", "--in", str(fx("rich")), cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert "Kollision" not in r.stderr
+
+
+def test_check_rich_warn_block_exit0(tmp_path):
+    """S3 (R-33): Slot-Fallback-Warnungen → „N Warnung(en):"-Block,
+    Exit bleibt 0 (Warnungen ≠ Fehler)."""
+    r = run_cli("check", "--in", str(fx("rich")), cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert "Warnung(en):" in r.stderr
+    assert "SLOT-FALLBACK" in r.stderr
+    assert "R-33" in r.stderr
+    assert "Kollision" not in r.stderr
 
 
 def test_render_no_gate_exit0_despite_collision(tmp_path):
@@ -119,13 +166,12 @@ def test_render_rich_fixture_no_gate(tmp_path):
 
 
 def test_render_rich_gate_status_reported(tmp_path):
-    """Rich-Fixture mit Gate: Exit 0 (kollisionsfrei) oder 3 (Report)."""
+    """S3-DoD: Rich-Fixture mit Gate → Exit 0 (kollisionsfrei, 0 Kollisionen)."""
     out = tmp_path / "rich-gate.svg"
     r = run_cli("render", "--in", str(fx("rich")), "--out", str(out),
                 cwd=tmp_path)
-    assert r.returncode in (0, 3), f"Rich-Gate: unerwarteter Exit {r.returncode}"
-    if r.returncode == 3:
-        assert "Kollision" in r.stderr
+    assert r.returncode == 0, r.stderr
+    assert out.exists()
 
 
 def test_render_exit2_on_invalid(tmp_path):

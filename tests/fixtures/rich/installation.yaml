@@ -10,7 +10,7 @@ canvas: { width: 800, height: 500, background: "#0b1220" }
 components:
   - id: puffer
     type: tank-buffer
-    at: [350, 330]
+    at: [350, 340]
     label: { text: "Puffer P", sub: "S4-Seed" }
   - id: h1_holz
     type: boiler-solid
@@ -30,7 +30,7 @@ components:
     label: { text: "O1" }
   - id: o3_mischer
     type: valve-3way
-    at: [470, 210]
+    at: [500, 220]
     label: { text: "O3 · Mischer", sub: "3-Wege" }
   - id: o9_kipp
     type: valve-globe
@@ -38,7 +38,7 @@ components:
     label: { text: "O9 · Kipp" }
   - id: o8_actuator
     type: valve-actuator
-    at: [470, 130]
+    at: [440, 130]
     label: { text: "O8 · Aktor" }
   - id: o2_v2w
     type: valve-2way
@@ -54,7 +54,7 @@ components:
     label: { text: "R1" }
   - id: w_platten
     type: heatex-plate
-    at: [560, 290]
+    at: [540, 300]
     label: { text: "W · Platten-HE" }
   - id: p_spirale
     type: heatex-shell
@@ -77,7 +77,7 @@ components:
     at: [250, 300]
   - id: a_sens2
     type: flow-switch
-    at: [610, 250]
+    at: [660, 240]
 
 pipes:
   # VL (vorlauf, 3 px): H1 → O1 → Mischer
@@ -125,14 +125,16 @@ pipes:
     kind: gas
     via: [[80, 180], [80, 114], [121, 114]]
   # Steuer (lila, 1.5 px gestrichelt): O8-Aktor-Stiel → O3-Misch-Schenkel
+  # (via links außen, um O3-Up-Label zu vermeiden — S3-Abstandskanon).
   - id: ctl-o8-o3
     from: { comp: o8_actuator, port: stem }
     to: { comp: o3_mischer, port: mix }
     kind: ctl
+    via: [[440, 240]]
 
 readouts:
   - id: a1_p_oben
-    at: { comp: puffer, port: top }
+    at: { x: 350, y: 230 }
     label: "a1 P-Oben"
     value_key: p_oben
   - id: a2_holz

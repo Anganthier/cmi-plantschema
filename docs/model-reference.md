@@ -125,11 +125,13 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 
 - **R-31 (S, S2) Typ→Symbol-Mapping:** 1:1 (`tank-buffer` →
   `pid-tank-buffer` …, `pump` → `pid-pump-cent`); Alias `valve` =
-  2-Wege-Default (`pid-valve-2way` + valve-2way-Geometrie);
-  `valve-3way`, `valve-globe` direkt. Label-Offset je Typ:
-  `symbols.LABEL_OFFSET` (halbe Symbolhöhe + 12 px; Default 32) —
-  Labels stehen **oben über dem Symbol** (`.txt-h` + sub `.txt-s`,
-  Kollisions-Prüfung: S3).
+  2-Wege-Default (`pid-valve-2way` + valve-2way-Geometrie).
+  **Label-Offset (S3, R-32):** `.txt-h`/`.txt-s` stehen im **up-Slot**
+  (8 px über der Symbol-Oberkante; 2 Zeilen mit Sub: Haupt-Baseline
+  20 px, Sub 17 px darunter — Sub-Unterkante exakt an der Kante),
+  `place.component_label_offset`; alle-4-Slots-kollidieren → Fallback
+  + Warning (R-33). (S2-Katalog `symbols.LABEL_OFFSET` bleibt als
+  Referenz-/Fallback-Katalog.)
 
 ## 6. Readout
 
@@ -160,13 +162,32 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 | Feld | Typ | Pflicht |
 |---|---|---|
 | `id` | string (R-3) | M |
-| `at` | `[x, y]` (R-4) | M |
+| `at` | `[x, y]` (R-4) | K (S3: exklusiv zu `comp`) |
+| `comp` | string (R-3) | K (S3: Host-Komponente) |
+| `port` | string (klein) | K (S3: Port am Host, optional) |
 | `text` | string | M |
 | `anchor` | `start\|middle\|end` (default `start`) | K |
 
-- **R-16 (M)** `at` im Canvas (x ≤ width, y ≤ height).
-- **R-17 (S1)** Position = exakt `at`; Auto-Slot-Regeln kommen in S3
-  (Slot um Host + Mindestabstand 8 px).
+- **R-16 (M)** Position im Canvas (x ≤ width, y ≤ height): `at`-Labels
+  exakt; Auto-Slot-Labels die aufgelöste Slot-Position.
+- **R-17 (S3) Label-Placement (R-32):** Entweder `at` **oder** `comp`
+  (+ optional `port`) — nicht beides, nicht keines (sonst
+  `label-placement`, R-32). `at` = exakte Position (**Override, gewinnt
+  immer**); `comp` = Auto-Slot um den Host (s. R-32).
+- **R-32 (M, S3) Slot-Präferenz + Mindestabstand:** Auto-Slot-Reihenfolge
+  **up → right → down → left** (Kanon); Slot-Text-Position an der
+  Symbol-Kante (`symbols.SYMBOL_BOUNDS`): up/down = 8 px über/unter
+  (anchor=middle), left/right = 16 px links/rechts (anchor end/start,
+  Readout-`side`-Kanon). Erster Slot mit **≥ 8 px** zu allen
+  Pipe-Segmenten (5-px-Sampling) + ≥ 8 px zu allen anderen
+  Symbol-Bounding-Boxes + **≥ 4 px** zu allen anderen Text-BBs wird
+  genommen. `port` verschiebt den Slot entlang der Slot-Kante (Port-
+  Offset, begrenzt auf Kante ± 0.5·Textgröße) und erzwingt die Richtung
+  des Port-Offsets (Präferenzkette startet dort).
+- **R-33 (M, S3) Slot-Fallback:** Alle 4 Slots kollidieren → Position =
+  **up-Slot** + **Warning** (kein Gate-Fehler; Report-Block
+  „N Warnung(en):" vor den Kollisionen, Exit bleibt 0). Gilt auch für
+  Komponenten-Labels (`.txt-h`/`.txt-s`).
 
 ## 8. Canvas
 
@@ -174,13 +195,16 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 - **R-19 (S)** `background` = hex-Farbe (default `#0b1220`); emittiert als
   `<rect id="canvas-bg">` unterste Ebene.
 
-## 9. Validierung (S1-Problem-Codes)
+## 9. Validierung (S1/S3-Problem-Codes)
 
 | Code | Prüfung |
 |---|---|
 | `dup-id` | ID mehr als einmal (alle Arten, R-5) |
 | `ref-component` | Pipe/Readout zeigt auf fehlende Komponente (R-8, R-13) |
 | `ref-port` | Pipe/Readout-Port nicht im (Override-geprägten) Port-Set (R-9, R-13) |
+| `label-comp-ref` | Label.comp zeigt auf fehlende Komponente (R-32, S3) |
+| `label-port-ref` | Label.port nicht im Port-Set des Hosts (R-32, S3) |
+| `label-placement` | Label weder `at` noch `comp` (R-32, S3) |
 | `out-of-canvas` | Readout/Label außerhalb des Canvas (R-14, R-16) |
 | `canvas-too-small` | width/height ≤ 100 (R-18) |
 | `unknown-type` | Komponententyp nicht im Katalog (R-6) |
@@ -223,18 +247,71 @@ Text `.txt`); Style-Block enthält cmi-V6.3-Klassen (`.pid`, `.pid-t`,
 - **R-25 (M)** Layer-Z-Order: Hintergrund → Pipes → Komponenten → Readouts
   → Labels (jeweils in Schema-Reihenfolge).
 
-## 12. Kollisions-Gate (S1)
+## 12. Kollisions-Gate (S1/S3)
 
 - **R-26 (M)** Gate-Prüfungen S1: **TEXT×TEXT** (Bounding-Box-
   Intersektion, cmi-Heuristik: width ≈ font_size·0.52·len, Höhe ≈
   font_size·1.2) + **LINE×TEXT** (Pipe-Segment läuft durch Text-BBox,
-  Sampling 5 px, ≥ 2 Treffer). S3 ergänzt TEXT×Box-Kante + USE×TEXT.
-  S2-Input: Readout-Texte = `.ro-val` (12 px) + `.ro-lbl` (11 px) mit
-  Emissions-Position/Anker (`side`); Labels = `.txt`.
-- **R-27 (M)** Kollision → exit 3 + Report (je Kollision eine Zeile:
-  `KIND [elemA] × [elemB] @ (x,y) — Hinweis`); `--no-gate` = Debug-Aus.
-- **R-28 (S)** Readout-/Label-Größen: Wert ≥ 12 px, Label ≥ 11 px
-  (`place.VALUE_FONT_MIN`/`LABEL_FONT_MIN`; S1 emittiert 14/11 px).
+  Sampling 5 px, ≥ 2 Treffer). S3-Check-Set: s. R-34.
+  S3-Input: Readout-Texte = `.ro-val` (12 px) + `.ro-lbl` (11 px) mit
+  Emissions-Position/Anker (`side`); Labels = `.txt` (Auto-Slot-Position
+  laut R-32); Komponenten-Labels = `.txt-h`/`.txt-s` (up-Slot, R-31/R-32).
+- **R-27 (M)** Kollision → exit 3 + Report (R-34-Format); `--no-gate` =
+  Debug-Aus.
+- **R-28 (S→M, S3)** Readout-/Label-Größen: Wert ≥ 12 px, Label ≥
+  11 px (`place.VALUE_FONT_MIN`/`LABEL_FONT_MIN`; Emissions-Klassen
+  `.ro-val`/`.ro-lbl` = 12/11 px → Gate-Prüfung `readout-size`, R-34).
+- **R-34 (M, S3) Kollisions-Check-Set + Report-Format (cmi
+  `svg_layout_check.py`-Kanon, `OVERLAP_THRESHOLD`-Schwelle):**
+  1. **TEXT×TEXT** (`text-text`): zwei Text-BBs überlappen (S1,
+     2-px-Nachte + echte Überdeckung).
+  2. **LINE×TEXT** (`line-text`): Pipe-Segment läuft durch Text-BBox
+     (5-px-Sampling, ≥ 2 Treffer; S1 unverändert).
+  3. **TEXT×BOX-Kante** (`text-box-edge`) + **USE×TEXT**
+     (`symbol-text`): Text-BBox × Symbol-Bounding-Box
+     (`symbols.SYMBOL_BOUNDS`, R-34-Katalog) → Kollision **nur wenn der
+     Overlap-Anteil > 50 % der Text-Fläche** liegt (cmi `overlap_area`-
+     Logik, Konstante `OVERLAP_THRESHOLD=0.5`); darunter = „Text neben
+     Symbol" erlaubt. Labels (`.txt`, `lbl-*`) → `text-box-edge`,
+     Readout-/Komponenten-Texte → `symbol-text`. **Eine Kollision pro
+     (Text, Symbol)-Paar** (dedupliziert).
+  4. **Readout-Größen-Gate** (`readout-size`): emittierter Readout-Text
+     Wert ≥ 12 px, Label ≥ 11 px (R-28, harte Prüfung).
+  Kanon-BBox: `text-anchor`-Korrektur (`end` → x = anchor_x − width,
+  `middle` → x = anchor_x − width/2; cmi `text_bbox`-Logik).
+  **Report-Format:** je Kollision eine Zeile
+  `KIND  [elemA] × [elemB] @ (x,y) — Hinweis` + am Ende
+  `N Kollision(en):` (Summe); vor den Kollisionen optional der
+  Warnungs-Block `N Warnung(en):` (R-33-Slot-Fallbacks, **Exit bleibt
+  0** — Warnungen ≠ Fehler); bei 0 Kollisionen: Exit 0 (kein
+  Kollisions-Block).
+
+### SYMBOL_BOUNDS-Katalog (S3, R-34: Bounding-Box je Komponententyp)
+
+`plantschema.SYMBOL_BOUNDS`: lokale BBox (x0, y0, x1, y1) um (0,0),
+**abgeleitet aus der cmi-Symbol-Geometrie** (`ui/svg/pid-symbols.svg`-
+Seed: Umschließung aller gezeichneten Elemente — Rechtecke, Kreise,
+Stiele, Pfeil-Enden; `valve`-Alias = valve-2way):
+
+| Typ | BBox (x0, y0, x1, y1) | Typ | BBox (x0, y0, x1, y1) |
+|---|---|---|---|
+| `tank-buffer` | (−30, −60, +30, +60) | `valve-2way` | (−20, −21, +20, +10) |
+| `boiler-oil` | (−28, −44, +28, +29) | `valve-3way` | (−20, −9, +20, +20) |
+| `boiler-solid` | (−28, −48, +28, +36) | `valve-globe` | (−20, −22, +20, +10) |
+| `collector-solar` | (−41, −14, +41, +14) | `valve-actuator` | (−20, −35, +20, +10) |
+| `heatex-plate` | (−35, −15, +35, +18) | `throttle` | (−20, −30, +20, +10) |
+| `heatex-shell` | (−30, −11, +30, +20) | `radiator` | (−30, −13, +30, +13) |
+| `mixing` | (−14, −11, +14, +14) | `tap` | (−14, −7, +14, +23) |
+| `pump` | (−20, −13, +20, +22) | `chimney` | (−14, −40, +18, +34) |
+| `pt`, `flow-switch` | (−8, −8, +8, +16) | Platzhalter (unbekannter Typ) | (−20, −20, +20, +20) |
+
+- **ALC-Änderung (S3):** `Label.at` optional + neue Felder
+  `Label.comp`/`Label.port` (Auto-Slots, R-32/R-33); neue
+  Validierungs-Probleme `label-comp-ref`/`label-port-ref`/
+  `label-placement`; Komponenten-Labels stehen im up-Slot statt
+  `LABEL_OFFSET` (S2); Gate-Report: Warnungs-Block (R-33) vor den
+  Kollisionen; neue Check-Arten `text-box-edge`/`symbol-text`/
+  `readout-size` (R-34); `SYMBOL_BOUNDS`-Katalog (R-34).
 
 ## 13. Exit-Codes (CLI-Kanon)
 

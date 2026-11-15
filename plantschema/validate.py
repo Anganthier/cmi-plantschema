@@ -129,16 +129,70 @@ def _check_readouts(
 
 
 def _check_labels(schema: Schema, out: list[Problem]) -> None:
-    """(f) label.at im Canvas (x/y dürfen Canvas-Rand berühren, nicht übertreffen)."""
+    """(f) Label-Placement (R-32/R-33, S3) + Canvas-Bereich.
+
+    - `at` ODER `comp` (+ optional `port`), aber nicht beides/keines →
+      `label-placement`.
+    - `at`: exakt im Canvas (x/y dürfen Rand berühren, nicht übertreffen).
+    - `comp`: Auto-Slot-Position (place.label_position) im Canvas.
+    """
+    from . import place
+
     w, h = schema.canvas.width, schema.canvas.height
     for lbl in schema.labels:
-        x, y = lbl.at
-        if x > w or y > h:
+        base = f"labels[id={lbl.id}]"
+        if (lbl.at is None) == (lbl.comp is None):
+            out.append(
+                Problem(
+                    "label-placement",
+                    "Label braucht entweder `at` ODER `comp` (+ optional "
+                    f"`port`), nicht beides und nicht keines (ist: "
+                    f"at={lbl.at!r}, comp={lbl.comp!r})",
+                    base,
+                )
+            )
+            continue
+        pos = place.label_position(lbl, schema)
+        if pos is None:
+            continue
+        if pos[0] > w or pos[1] > h:
+            field = "at" if lbl.at is not None else f"comp={lbl.comp!r}"
             out.append(
                 Problem(
                     "out-of-canvas",
-                    f"Position ({x},{y}) liegt außerhalb des Canvas {w}×{h}",
-                    f"labels[id={lbl.id}].at",
+                    f"Position ({pos[0]},{pos[1]}) liegt außerhalb des "
+                    f"Canvas {w}×{h}",
+                    f"{base}.{field}",
+                )
+            )
+
+
+def _check_label_refs(
+    schema: Schema, ports_by_comp: dict[str, frozenset[str]], out: list[Problem]
+) -> None:
+    """(g) Label.comp/port (S3): Komponente existiert + Port gilt für Typ."""
+    for i, lbl in enumerate(schema.labels):
+        if lbl.comp is None:
+            continue
+        base = f"labels[{i}]"
+        comp = _find_component(schema, lbl.comp)
+        if comp is None:
+            out.append(
+                Problem(
+                    "label-comp-ref",
+                    f"Komponente {lbl.comp!r} existiert nicht",
+                    f"{base}.comp",
+                )
+            )
+            continue
+        if lbl.port is not None and lbl.port not in ports_by_comp[comp.id]:
+            allowed = sorted(ports_by_comp[comp.id])
+            out.append(
+                Problem(
+                    "label-port-ref",
+                    f"Port {lbl.port!r} nicht zulässig für "
+                    f"{comp.type!r} (erlaubt: {', '.join(allowed)})",
+                    f"{base}.port",
                 )
             )
 
@@ -211,6 +265,7 @@ def validate(schema: Schema) -> list[Problem]:
     ports = _ports_by_comp(schema)
     _check_pipe_refs(schema, ports, out)
     _check_readouts(schema, ports, out)
+    _check_label_refs(schema, ports, out)
     _check_labels(schema, out)
     return out
 
