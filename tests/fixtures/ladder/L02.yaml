@@ -1,0 +1,78 @@
+# S4-L4 Ladder L02 — Zweig-Topologie: Quelle (g_source) + Speicher
+# (g_storage) + Abnehmer-Zweig (g_heat), 6 Komponenten, 6 Pipes.
+# Baut auf L01 auf (Kessel/Pumpe/Ventil/Puffer). Test:
+# - p_vl (g_source → g_storage, ohne `via`) kreuzt die FREMDE Box
+#   g_heat → Kanal-Detour (R-37) über die obere Kante (Gleichstand
+#   oben/unten → obere Kante, Kanal-Linie y = 59).
+#   Hinweis: R-37 braucht eine DRITTE Box (fremd = weder from- noch
+#   to-Gruppe) — mit nur 2 Gruppen ist kein Detour möglich.
+# - p_heat_rl: inter-gruppig MIT `via` → Autor-Override (kein Detour).
+schema: plantschema/v1
+canvas: { width: 1100, height: 420, background: "#0b1220" }
+
+components:
+  - id: boiler1
+    type: boiler-oil
+    label: { text: "Kessel" }
+  - id: pump1
+    type: pump
+    label: { text: "P1" }
+  - id: heat1
+    type: radiator
+    label: { text: "HK1" }
+  - id: heat2
+    type: radiator
+    label: { text: "HK2" }
+  - id: tank1
+    type: tank-buffer
+    label: { text: "Puffer", sub: "800 L" }
+  - id: valve1
+    type: valve-2way
+    label: { text: "V1" }
+
+groups:
+  - id: g_source
+    label: "Quelle"
+    members: [boiler1, pump1]
+    hub: boiler1
+    at: [40, 60]
+    size: [300, 240]
+  - id: g_heat
+    label: "Heizzweig"
+    members: [heat1, heat2]
+    hub: heat1
+    at: [380, 60]
+    size: [320, 240]
+  - id: g_storage
+    label: "Speicher"
+    members: [tank1, valve1]
+    hub: tank1
+    at: [740, 60]
+    size: [320, 300]
+
+pipes:
+  - id: p_vl
+    from: { comp: boiler1, port: right }
+    to: { comp: tank1, port: left }
+    kind: vl
+  - id: p_rl_boiler
+    from: { comp: pump1, port: out }
+    to: { comp: boiler1, port: left }
+    kind: rl
+  - id: p_valve
+    from: { comp: valve1, port: out }
+    to: { comp: tank1, port: left }
+    kind: rl
+  - id: p_heat_vl
+    from: { comp: tank1, port: right }
+    to: { comp: heat2, port: in }
+    kind: vl
+  - id: p_heat_loop
+    from: { comp: heat2, port: out }
+    to: { comp: heat1, port: in }
+    kind: vl
+  - id: p_heat_rl
+    from: { comp: heat1, port: out }
+    to: { comp: pump1, port: in }
+    kind: rl
+    via: [[570, 340], [104, 340]]

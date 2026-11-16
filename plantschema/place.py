@@ -450,23 +450,18 @@ def _slot_from_host(
 def _all_pipe_segments(
     schema: Schema, comps: dict[str, object]
 ) -> list[list[Point]]:
-    from .model import Component
-    from .route import port_position, route_pipe
+    """Pipe-Punktesequenzen für die Slot-Evaluation (R-32/R-33).
 
-    segs: list[list[Point]] = []
-    for p in schema.pipes:
-        cf, ct = comps.get(p.from_.comp), comps.get(p.to.comp)
-        if cf is None or ct is None:
-            continue
-        assert isinstance(cf, Component) and isinstance(ct, Component)
-        segs.append(
-            route_pipe(
-                p,
-                port_position(cf.type, cf.at, p.from_.port),
-                port_position(ct.type, ct.at, p.to.port),
-            )
-        )
-    return segs
+    S4-L4-Fix: gruppen-bewusste Route (`route.schema_routes`, R-37 —
+    via-Override + Kanal-Detour) statt des reinen Manhattan-Fallbacks,
+    d. h. exakt die Geometrie, die `emit.compute_layout` emittiert und
+    das Gate prüft (vorher: Phantom-Segmente des nie gezeichneten
+    Fallbacks blockierten Slots → falsche R-33-Warnungen).
+    """
+    from .route import schema_routes
+
+    _ = comps  # Signatur stabil (Aufrufer übergeben die Komponenten-Map)
+    return schema_routes(schema)
 
 
 def _all_text_boxes(

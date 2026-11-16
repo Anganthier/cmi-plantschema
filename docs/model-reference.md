@@ -319,6 +319,10 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
   genommen. `port` verschiebt den Slot entlang der Slot-Kante (Port-
   Offset, begrenzt auf Kante ± 0.5·Textgröße) und erzwingt die Richtung
   des Port-Offsets (Präferenzkette startet dort).
+  *Präzisierung (S4-L4):* „Pipe-Segmente" = die **emittierte** Route
+  (`route.schema_routes` ≡ `emit.compute_layout`: via-Override +
+  R-37-Kanal-Detour), nicht der reine Manhattan-Fallback — Slot-
+  Evaluation, Emission und Gate prüfen dieselbe Geometrie.
 - **R-33 (M, S3) Slot-Fallback:** Alle 4 Slots kollidieren → Position =
   **up-Slot** + **Warning** (kein Gate-Fehler; Report-Block
   „N Warnung(en):" vor den Kollisionen, Exit bleibt 0). Gilt auch für

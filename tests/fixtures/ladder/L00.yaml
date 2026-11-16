@@ -1,0 +1,29 @@
+# S4-L4 Ladder L00 — Trivial: 1 Gruppe, nur Hub (tank), 0 weitere
+# Mitglieder, 1 Pipe zu einem nicht-gruppigen Abnehmer (explizites `at`).
+# Engine: nichts zu splitten — nur Hub-Zentrierung (Box-Mitte) + Gate-
+# Freiheit (check exit 0: 0 Kollisionen, 0 Warnungen).
+schema: plantschema/v1
+canvas: { width: 600, height: 400, background: "#0b1220" }
+
+components:
+  - id: tank1
+    type: tank-buffer
+    label: { text: "Puffer" }
+  - id: heat1
+    type: radiator
+    at: [440, 200]
+    label: { text: "HK1" }
+
+groups:
+  - id: g_store
+    label: "Speicher"
+    members: [tank1]
+    hub: tank1
+    at: [40, 60]
+    size: [240, 280]
+
+pipes:
+  - id: p_vl
+    from: { comp: tank1, port: right }
+    to: { comp: heat1, port: in }
+    kind: vl

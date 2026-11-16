@@ -1,0 +1,399 @@
+# S4-L4 Ladder L06 — Stress-Multi: 7 Gruppen, 24 Komponenten,
+# 31 Pipes (alle Typen vl/rl/ww/ctl/gas), 10 Readouts, 18 Labels
+# (3 Zonen + 6 Notizen + 8 gebundene Auto-Slot-Labels + Legende).
+# Baut auf L05 auf (Heizungs-Kette + WW-Ring unverändert) und ergänzt:
+# - g_solar (untere Zeile rechts): Kollektorfeld (2 Kollektoren in
+#   Serie) → Solar-Puffer (Hub) → Solar-WT → Ventil → Puffer, Solar-
+#   pumpe im Rücklauf; Hub-Gruppe mit 5 Mitgliedern (Split 3 + 2).
+# - p_solar_rl (rl, g_solar → g_misch, OHNE `via`): der Manhattan-
+#   Fallback (y = 605) kreuzt die FREMDE Box g_ww → Kanal-Detour (R-37)
+#   über deren obere Kante (Kanal-Linie y = 519) bis V3.mix.
+# - Readout-/Label-Dichte: Readouts im Box-Inneren (x/y), Notizen am
+#   rechten Rand (außerhalb aller Boxen, GROUP-BOX×LABEL-frei).
+# Test: Gate-Schärfe + Routing-Kanäle unter Extrem-Last (check 0/0).
+schema: plantschema/v1
+canvas: { width: 1800, height: 900, background: "#0b1220" }
+
+components:
+  # --- G1 Kessel ---
+  - id: boiler1
+    type: boiler-oil
+    label: { text: "Kessel" }
+  - id: chim1
+    type: chimney
+    label: { text: "Kamin" }
+  - id: valve0
+    type: valve-2way
+    label: { text: "V0" }
+  # --- G2 Mischer ---
+  - id: mix1
+    type: mixing
+    label: { text: "M1" }
+  - id: valve3
+    type: valve-3way
+    label: { text: "V3" }
+  # --- G3 Pumpe ---
+  - id: pump2
+    type: pump
+    label: { text: "P2" }
+  - id: valve1
+    type: valve-2way
+    label: { text: "V1" }
+  # --- G4 Räume + Minderer ---
+  - id: throttle1
+    type: throttle
+    label: { text: "Minderer" }
+  - id: rad1
+    type: radiator
+    label: { text: "R1" }
+  - id: rad2
+    type: radiator
+    label: { text: "R2" }
+  - id: rad3
+    type: radiator
+    label: { text: "R3" }
+  # --- G5 RL-Entscheidung ---
+  - id: valve5
+    type: valve-3way
+    label: { text: "RL-Weiche" }
+  # --- G6 WW-Ring ---
+  - id: tank2
+    type: tank-buffer
+    label: { text: "WW-Speicher", sub: "300 L" }
+  - id: pump3
+    type: pump
+    label: { text: "LP" }
+  - id: hx1
+    type: heatex-plate
+    label: { text: "WT" }
+  - id: valve6
+    type: valve-2way
+    label: { text: "ZV" }
+  - id: tap1
+    type: tap
+    label: { text: "Zapf 1" }
+  - id: tap2
+    type: tap
+    label: { text: "Zapf 2" }
+  # --- G7 Solar ---
+  - id: tank3
+    type: tank-buffer
+    label: { text: "Solar-Puffer", sub: "800 L" }
+  - id: coll1
+    type: collector-solar
+    label: { text: "K1" }
+  - id: coll2
+    type: collector-solar
+    label: { text: "K2" }
+  - id: pump4
+    type: pump
+    label: { text: "P4" }
+  - id: hx2
+    type: heatex-plate
+    label: { text: "WT2" }
+  - id: valve7
+    type: valve-2way
+    label: { text: "V7" }
+
+groups:
+  - id: g_kessel
+    label: "Kessel"
+    members: [boiler1, chim1, valve0]
+    hub: boiler1
+    hub_at: [180, 200]
+    at: [40, 120]
+    size: [280, 320]
+  - id: g_misch
+    label: "Mischer"
+    members: [mix1, valve3]
+    hub: mix1
+    hub_at: [500, 200]
+    at: [360, 120]
+    size: [280, 320]
+  - id: g_pumpe
+    label: "Pumpe"
+    members: [pump2, valve1]
+    hub: pump2
+    hub_at: [820, 200]
+    at: [680, 120]
+    size: [280, 320]
+  - id: g_raeume
+    label: "Räume"
+    members: [throttle1, rad1, rad2, rad3]
+    hub: throttle1
+    hub_at: [1030, 280]
+    at: [1000, 120]
+    size: [360, 320]
+  - id: g_rl
+    label: "RL-Entscheidung"
+    members: [valve5]
+    hub: valve5
+    at: [1400, 120]
+    size: [220, 320]
+  - id: g_ww
+    label: "WW-Ring"
+    members: [tank2, pump3, hx1, valve6, tap1, tap2]
+    hub: tank2
+    at: [40, 520]
+    size: [960, 340]
+  - id: g_solar
+    label: "Solar"
+    members: [tank3, coll1, coll2, pump4, hx2, valve7]
+    hub: tank3
+    at: [1040, 520]
+    size: [580, 340]
+
+pipes:
+  # --- Heizungs-Kette (wie L04) ---
+  - id: p_gas
+    from: { comp: boiler1, port: left }
+    to: { comp: chim1, port: bottom }
+    kind: gas
+    via: [[140, 200], [140, 330], [118, 330]]
+  - id: p_vl1
+    from: { comp: boiler1, port: right }
+    to: { comp: mix1, port: in }
+    kind: vl
+  - id: p_vl2
+    from: { comp: mix1, port: out }
+    to: { comp: pump2, port: in }
+    kind: vl
+  - id: p_vl3
+    from: { comp: pump2, port: out }
+    to: { comp: throttle1, port: in }
+    kind: vl
+    via: [[980, 200], [980, 280]]
+  # Minderer-Fan-out → 3 Räume.
+  - id: p_fan1
+    from: { comp: throttle1, port: out }
+    to: { comp: rad1, port: in }
+    kind: vl
+  - id: p_fan2
+    from: { comp: throttle1, port: out }
+    to: { comp: rad2, port: in }
+    kind: vl
+  - id: p_fan3
+    from: { comp: throttle1, port: out }
+    to: { comp: rad3, port: in }
+    kind: vl
+  # Räume-RL → Weiche.
+  - id: p_rl_r1
+    from: { comp: rad1, port: out }
+    to: { comp: valve5, port: mix }
+    kind: rl
+    via: [[1160, 200], [1160, 420], [1510, 420]]
+  - id: p_rl_r2
+    from: { comp: rad2, port: out }
+    to: { comp: valve5, port: mix }
+    kind: rl
+  - id: p_rl_r3
+    from: { comp: rad3, port: out }
+    to: { comp: valve5, port: in }
+    kind: rl
+  # RL-Sammelleitung (Kanal y = 470) + RL-Kette über die Mitglieder.
+  - id: p_rl_main
+    from: { comp: valve5, port: out }
+    to: { comp: valve1, port: out }
+    kind: rl
+    via: [[1550, 280], [1550, 470], [798, 470], [798, 280]]
+  - id: p_rl_g3
+    from: { comp: valve1, port: in }
+    to: { comp: valve3, port: out }
+    kind: rl
+  - id: p_rl_g2
+    from: { comp: valve3, port: in }
+    to: { comp: valve0, port: out }
+    kind: rl
+  - id: p_rl_g1
+    from: { comp: valve0, port: in }
+    to: { comp: boiler1, port: bottom }
+    kind: rl
+  - id: p_beimisch
+    from: { comp: valve3, port: mix }
+    to: { comp: mix1, port: bottom }
+    kind: rl
+  # Steuerleitung: Strangventil → Minderer.
+  - id: p_ctl1
+    from: { comp: valve1, port: stem }
+    to: { comp: throttle1, port: stem }
+    kind: ctl
+  # --- WW-Ring (g_ww) ---
+  - id: p_ww_lade
+    from: { comp: pump3, port: out }
+    to: { comp: hx1, port: in }
+    kind: ww
+    via: [[360, 605], [360, 640], [250, 640], [250, 690]]
+  - id: p_ww_hx
+    from: { comp: hx1, port: out }
+    to: { comp: tank2, port: left }
+    kind: ww
+  - id: p_ww_zapf1
+    from: { comp: tank2, port: right }
+    to: { comp: tap1, port: in }
+    kind: ww
+  - id: p_ww_zapf2
+    from: { comp: tap1, port: out }
+    to: { comp: tap2, port: in }
+    kind: ww
+    via: [[790, 605], [790, 700], [690, 700], [690, 775]]
+  - id: p_ww_zirk
+    from: { comp: tap2, port: out }
+    to: { comp: valve6, port: out }
+    kind: ww
+    via: [[780, 775], [780, 830], [350, 830], [350, 775]]
+  - id: p_ww_ret
+    from: { comp: valve6, port: in }
+    to: { comp: pump3, port: in }
+    kind: ww
+    via: [[230, 775], [230, 605]]
+  # --- Solar (g_solar) ---
+  - id: p_s_coll
+    from: { comp: coll1, port: out }
+    to: { comp: coll2, port: in }
+    kind: vl
+    via: [[1260, 605], [1260, 640], [1140, 640], [1140, 690]]
+  - id: p_s_vl
+    from: { comp: coll2, port: out }
+    to: { comp: tank3, port: left }
+    kind: vl
+  - id: p_s_rl
+    from: { comp: tank3, port: bottom }
+    to: { comp: pump4, port: in }
+    kind: rl
+    via: [[1330, 820], [1160, 820], [1160, 775]]
+  - id: p_s_pump
+    from: { comp: pump4, port: out }
+    to: { comp: coll1, port: in }
+    kind: rl
+    via: [[1250, 775], [1250, 720], [1120, 720], [1120, 605]]
+  - id: p_s_hx
+    from: { comp: tank3, port: right }
+    to: { comp: hx2, port: in }
+    kind: vl
+  - id: p_s_hx2
+    from: { comp: hx2, port: out }
+    to: { comp: valve7, port: out }
+    kind: rl
+    via: [[1520, 605], [1520, 775]]
+  - id: p_s_ret
+    from: { comp: valve7, port: in }
+    to: { comp: tank3, port: mid-bottom }
+    kind: rl
+    via: [[1400, 775], [1400, 710]]
+  - id: p_s_sek
+    from: { comp: tank3, port: mid-top }
+    to: { comp: hx2, port: bottom }
+    kind: ww
+  # R-37-Detour unter Last: ohne `via`, Fallback kreuzt fremde Box g_ww.
+  - id: p_solar_rl
+    from: { comp: hx2, port: out }
+    to: { comp: valve3, port: mix }
+    kind: rl
+
+readouts:
+  - id: t_vl
+    at: { comp: mix1, port: top }
+    label: "T VL"
+    value_key: t_vl
+  - id: t_ww
+    at: { x: 600, y: 560 }
+    label: "T WW"
+    value_key: t_ww
+  - id: t_zapf
+    at: { comp: tap1, port: draw }
+    label: "Zapf"
+    value_key: t_zapf
+  - id: t_rl
+    at: { x: 1100, y: 490 }
+    label: "T RL"
+    value_key: t_rl
+  - id: t_kessel
+    at: { x: 260, y: 160 }
+    label: "T Kessel"
+    value_key: t_kessel
+  - id: t_misch
+    at: { x: 580, y: 160 }
+    label: "T Misch"
+    value_key: t_misch
+  - id: t_pumpe
+    at: { x: 900, y: 330 }
+    label: "p Pumpe"
+    value_key: p_pumpe
+  - id: t_raum
+    at: { x: 1290, y: 380 }
+    label: "T Raum"
+    value_key: t_raum
+  - id: t_solar
+    at: { x: 1560, y: 690 }
+    label: "T Solar"
+    value_key: t_solar
+  - id: t_aussen
+    at: { x: 1680, y: 300 }
+    label: "T Aussen"
+    value_key: t_aussen
+
+labels:
+  - id: zone_hz
+    at: [40, 100]
+    text: "Zone Heizung (Kette)"
+    anchor: start
+  - id: zone_ww
+    at: [40, 505]
+    text: "Zone Trinkwasser (WW-Ring)"
+    anchor: start
+  - id: lbl_ring
+    comp: tank2
+    text: "Zirkulation"
+  - id: room1
+    comp: rad1
+    text: "Bad"
+  - id: room2
+    comp: rad2
+    text: "Kind"
+  - id: room3
+    comp: rad3
+    text: "Wohnen"
+  - id: zone_solar
+    at: [1040, 505]
+    text: "Zone Solar"
+    anchor: start
+  - id: lbl_feld
+    comp: coll1
+    text: "Feld A"
+  - id: lbl_abgas
+    comp: chim1
+    text: "Abgas"
+  - id: lbl_kueche
+    comp: tap1
+    text: "Küche"
+  - id: lbl_dusche
+    comp: tap2
+    text: "Dusche"
+  - id: note1
+    at: [1680, 140]
+    text: "Notizen:"
+    anchor: start
+  - id: note2
+    at: [1680, 160]
+    text: "Kanal y=470"
+    anchor: start
+  - id: note3
+    at: [1680, 180]
+    text: "Kanal y=519"
+    anchor: start
+  - id: note4
+    at: [1680, 200]
+    text: "Detour R-37"
+    anchor: start
+  - id: note5
+    at: [1680, 220]
+    text: "Stress-Level"
+    anchor: start
+  - id: note6
+    at: [1680, 240]
+    text: "WW y=830"
+    anchor: start
+  - id: legende
+    at: [40, 885]
+    text: "L06 Stress: 7 Gruppen, 24 Komponenten, 31 Pipes"
+    anchor: start

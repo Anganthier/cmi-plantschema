@@ -1,0 +1,165 @@
+# S4-L4 Ladder L03 — Hub-Stern: zentrale Puffer-Gruppe (tank-Hub +
+# 2 Mischer) + 4 Quellen-Gruppen (Öl-Kessel, Solar, Holz, Wärmetauscher),
+# die alle in den Puffer laufen. Baut auf L02 auf (Kessel/Pumpe/Puffer).
+# Test: Hub mit hohem Port-Fan (left/right/bottom/mid-bottom + Mischer),
+# Label-/Readout-Dichte um den Hub, Hub-only-Gruppe (g_hx), via-
+# Rückläufe durch Kanäle zwischen den Boxen (y = 280 / 610 / 800).
+schema: plantschema/v1
+canvas: { width: 1300, height: 900, background: "#0b1220" }
+
+components:
+  # --- Puffer-Zentrum ---
+  - id: tank1
+    type: tank-buffer
+    label: { text: "Puffer", sub: "1500 L" }
+  - id: mix1
+    type: mixing
+    label: { text: "M1" }
+  - id: mix2
+    type: mixing
+    label: { text: "M2" }
+  # --- Quelle NW: Öl-Kessel ---
+  - id: boiler1
+    type: boiler-oil
+    label: { text: "Kessel" }
+  - id: pump1
+    type: pump
+    label: { text: "P1" }
+  # --- Quelle SW: Solar ---
+  - id: coll1
+    type: collector-solar
+    label: { text: "Solar" }
+  - id: pump2
+    type: pump
+    label: { text: "P2" }
+  # --- Quelle NO: Holz ---
+  - id: wood1
+    type: boiler-solid
+    label: { text: "Holz" }
+  - id: valve2
+    type: valve-2way
+    label: { text: "V2" }
+  # --- Quelle SO: Wärmetauscher (Hub-only) ---
+  - id: hx1
+    type: heatex-plate
+    label: { text: "WT1" }
+
+groups:
+  - id: g_puffer
+    label: "Puffer"
+    members: [tank1, mix1, mix2]
+    hub: tank1
+    at: [480, 300]
+    size: [340, 300]
+  - id: g_boiler
+    label: "Öl-Kessel"
+    members: [boiler1, pump1]
+    hub: boiler1
+    at: [40, 40]
+    size: [360, 220]
+  - id: g_solar
+    label: "Solar"
+    members: [coll1, pump2]
+    hub: coll1
+    at: [40, 620]
+    size: [360, 220]
+  - id: g_wood
+    label: "Holz"
+    members: [wood1, valve2]
+    hub: wood1
+    at: [900, 40]
+    size: [360, 220]
+  - id: g_hx
+    label: "Wärmetauscher"
+    members: [hx1]
+    hub: hx1
+    at: [900, 620]
+    size: [360, 220]
+
+pipes:
+  # Öl-Kessel: VL in Puffer-links, RL über Mischer M1 + Kanal y=280.
+  - id: p_boiler_vl
+    from: { comp: boiler1, port: right }
+    to: { comp: tank1, port: left }
+    kind: vl
+  - id: p_boiler_pump
+    from: { comp: pump1, port: out }
+    to: { comp: boiler1, port: left }
+    kind: rl
+  - id: p_mix1
+    from: { comp: tank1, port: left }
+    to: { comp: mix1, port: out }
+    kind: rl
+  - id: p_boiler_rl
+    from: { comp: mix1, port: in }
+    to: { comp: pump1, port: in }
+    kind: rl
+    via: [[540, 450], [540, 280], [100, 280], [100, 150]]
+  # Solar: VL von unten in Puffer-bottom, RL über M1 + Kanal y=610.
+  - id: p_solar_vl
+    from: { comp: coll1, port: out }
+    to: { comp: tank1, port: bottom }
+    kind: vl
+  - id: p_solar_pump
+    from: { comp: pump2, port: out }
+    to: { comp: coll1, port: in }
+    kind: rl
+  - id: p_solar_rl
+    from: { comp: mix1, port: bottom }
+    to: { comp: pump2, port: in }
+    kind: rl
+    via: [[575, 610], [100, 610], [100, 730]]
+  # Holz: VL über Ventil V2 in Puffer-rechts, RL über M2 + Kanal y=280.
+  - id: p_wood_valve
+    from: { comp: wood1, port: left }
+    to: { comp: valve2, port: out }
+    kind: vl
+  - id: p_wood_vl
+    from: { comp: valve2, port: in }
+    to: { comp: tank1, port: right }
+    kind: vl
+  - id: p_mix2
+    from: { comp: tank1, port: right }
+    to: { comp: mix2, port: in }
+    kind: rl
+  - id: p_wood_rl
+    from: { comp: mix2, port: out }
+    to: { comp: wood1, port: bottom }
+    kind: rl
+    via: [[760, 450], [760, 280], [1080, 280]]
+  # Wärmetauscher: Puffer-mid-bottom → WT1, RL über Kanal y=800 → M2.
+  - id: p_hx_vl
+    from: { comp: tank1, port: mid-bottom }
+    to: { comp: hx1, port: in }
+    kind: vl
+  - id: p_hx_rl
+    from: { comp: hx1, port: out }
+    to: { comp: mix2, port: bottom }
+    kind: rl
+    via: [[1140, 730], [1140, 800], [725, 800]]
+
+readouts:
+  - id: t_bottom
+    at: { comp: tank1, port: bottom }
+    label: "T unten"
+    value_key: t_bottom
+  - id: t_mid
+    at: { x: 776, y: 360 }
+    label: "T mitte"
+    value_key: t_mid
+
+labels:
+  # Gebundene Auto-Slot-Labels (R-32): up = Komponenten-Label belegt →
+  # down-Slot. (Am Tank selbst sind alle 4 Slots objektiv belegt:
+  # up Komponenten-Label, left/right Mischer, down Solar-VL — ein dort
+  # gebundenes Label wäre ein korrekter R-33-Fallback, kein 0/0.)
+  - id: zone_hx
+    comp: hx1
+    text: "Entladung"
+  - id: zone_solar
+    comp: coll1
+    text: "Kollektorfeld"
+  - id: legende
+    at: [40, 885]
+    text: "L03 Hub-Stern: 5 Gruppen, 10 Komponenten, 13 Pipes"
+    anchor: start

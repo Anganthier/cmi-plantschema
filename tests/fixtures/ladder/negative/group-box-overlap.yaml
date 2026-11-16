@@ -1,0 +1,56 @@
+# S4-L4 Ladder-Negativ: absichtlich überlappende Makro-Gruppen-Boxen
+# (Variante von L02, Engine-Placement): g_source 40..340 × 60..300 und
+# g_heat 100..400 × 60..300 → Overlap 240×240 px = 80 % der kleineren
+# Box (Schwelle > 50 %, R-35) → check exit 3 mit GROUP-BOX-Zeile
+# `group-g_source` × `group-g_heat` (Folge-Kollisionen der Mitglieder in
+# der jeweils fremden Box — COMPONENT-IN-FOREIGN-GROUP-BOX — sind
+# erwartet). Ungültige Konfiguration ≠ Engine-Bug.
+schema: plantschema/v1
+canvas: { width: 900, height: 400, background: "#0b1220" }
+
+components:
+  - id: boiler1
+    type: boiler-oil
+    label: { text: "Kessel" }
+  - id: pump1
+    type: pump
+    label: { text: "P1" }
+  - id: heat1
+    type: radiator
+    label: { text: "HK1" }
+  - id: heat2
+    type: radiator
+    label: { text: "HK2" }
+  - id: tank1
+    type: tank-buffer
+    label: { text: "Puffer" }
+
+groups:
+  - id: g_source
+    label: "Quelle"
+    members: [boiler1, pump1]
+    hub: boiler1
+    at: [40, 60]
+    size: [300, 240]
+  - id: g_heat
+    label: "Heizzweig"
+    members: [heat1, heat2]
+    hub: heat1
+    at: [100, 60]
+    size: [300, 240]
+  - id: g_storage
+    label: "Speicher"
+    members: [tank1]
+    hub: tank1
+    at: [560, 60]
+    size: [300, 300]
+
+pipes:
+  - id: p_vl
+    from: { comp: boiler1, port: right }
+    to: { comp: tank1, port: left }
+    kind: vl
+  - id: p_rl
+    from: { comp: pump1, port: out }
+    to: { comp: boiler1, port: left }
+    kind: rl

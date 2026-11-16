@@ -1,0 +1,186 @@
+# S4-L4 Ladder L04 — Ketten-Topologie: 5 Gruppen in Serie
+# (Kessel → Mischer → Pumpe → Räume/Minderer → RL-Entscheidung), 13
+# Komponenten, 17 Pipes, viele inter-group-Pipes. Baut auf L03 auf
+# (Kessel/Mischer/Pumpe/Ventile) und ergänzt Räume (4 Heizkörper) +
+# Minderer (throttle) mit Fan-out + RL-Weiche (valve-3way).
+# Test: `hub_at` (VL-Achse y = 200, Mitglieder im Zeilen-Band darunter),
+# Spalten-Split 2+2 (g_raeume), RL-Kette über die Mitglieder (y = 280),
+# RL-Sammelleitung über den Kanal unterhalb aller Boxen (y = 470).
+# Geometrie-Hinweis (Engine-Bug-Regel b): g_raeume ist 360 px breit —
+# bei 300 px läge der Minderer-Hub (x = 1150) nur 72 px zwischen den
+# Heizkörper-Kanten (1114 / 1186); das Label "Minderer" braucht
+# 58 px + 2·8 px R-32-Abstand = 74 px → objektiv zu eng (R-33-Warnung).
+schema: plantschema/v1
+canvas: { width: 1660, height: 560, background: "#0b1220" }
+
+components:
+  # --- G1 Kessel ---
+  - id: boiler1
+    type: boiler-oil
+    label: { text: "Kessel" }
+  - id: chim1
+    type: chimney
+    label: { text: "Kamin" }
+  - id: valve0
+    type: valve-2way
+    label: { text: "V0" }
+  # --- G2 Mischer ---
+  - id: mix1
+    type: mixing
+    label: { text: "M1" }
+  - id: valve3
+    type: valve-3way
+    label: { text: "V3" }
+  # --- G3 Pumpe ---
+  - id: pump2
+    type: pump
+    label: { text: "P2" }
+  - id: valve1
+    type: valve-2way
+    label: { text: "V1" }
+  # --- G4 Räume + Minderer ---
+  - id: throttle1
+    type: throttle
+    label: { text: "Minderer" }
+  - id: rad1
+    type: radiator
+    label: { text: "R1" }
+  - id: rad2
+    type: radiator
+    label: { text: "R2" }
+  - id: rad3
+    type: radiator
+    label: { text: "R3" }
+  - id: rad4
+    type: radiator
+    label: { text: "R4" }
+  # --- G5 RL-Entscheidung ---
+  - id: valve5
+    type: valve-3way
+    label: { text: "RL-Weiche" }
+
+groups:
+  - id: g_kessel
+    label: "Kessel"
+    members: [boiler1, chim1, valve0]
+    hub: boiler1
+    hub_at: [180, 200]
+    at: [40, 120]
+    size: [280, 320]
+  - id: g_misch
+    label: "Mischer"
+    members: [mix1, valve3]
+    hub: mix1
+    hub_at: [500, 200]
+    at: [360, 120]
+    size: [280, 320]
+  - id: g_pumpe
+    label: "Pumpe"
+    members: [pump2, valve1]
+    hub: pump2
+    hub_at: [820, 200]
+    at: [680, 120]
+    size: [280, 320]
+  - id: g_raeume
+    label: "Räume"
+    members: [throttle1, rad1, rad2, rad3, rad4]
+    hub: throttle1
+    at: [1000, 120]
+    size: [360, 320]
+  - id: g_rl
+    label: "RL-Entscheidung"
+    members: [valve5]
+    hub: valve5
+    at: [1400, 120]
+    size: [220, 320]
+
+pipes:
+  # Abgas (intra, via an Kamin-Label vorbei).
+  - id: p_gas
+    from: { comp: boiler1, port: left }
+    to: { comp: chim1, port: bottom }
+    kind: gas
+    via: [[140, 200], [140, 330], [118, 330]]
+  # VL-Kette (y = 200).
+  - id: p_vl1
+    from: { comp: boiler1, port: right }
+    to: { comp: mix1, port: in }
+    kind: vl
+  - id: p_vl2
+    from: { comp: mix1, port: out }
+    to: { comp: pump2, port: in }
+    kind: vl
+  - id: p_vl3
+    from: { comp: pump2, port: out }
+    to: { comp: throttle1, port: in }
+    kind: vl
+    via: [[980, 200], [980, 280]]
+  - id: p_vl_r1
+    from: { comp: pump2, port: out }
+    to: { comp: rad1, port: in }
+    kind: vl
+  - id: p_vl_r2
+    from: { comp: pump2, port: out }
+    to: { comp: rad2, port: in }
+    kind: vl
+  # Minderer-Fan-out (rechte Spalte).
+  - id: p_fan3
+    from: { comp: throttle1, port: out }
+    to: { comp: rad3, port: in }
+    kind: vl
+  - id: p_fan4
+    from: { comp: throttle1, port: out }
+    to: { comp: rad4, port: in }
+    kind: vl
+  - id: p_r1r3
+    from: { comp: rad1, port: out }
+    to: { comp: rad3, port: in }
+    kind: rl
+  - id: p_r2r4
+    from: { comp: rad2, port: out }
+    to: { comp: rad4, port: in }
+    kind: rl
+  # RL → Weiche.
+  - id: p_rl3
+    from: { comp: rad3, port: out }
+    to: { comp: valve5, port: in }
+    kind: rl
+    via: [[1310, 200], [1310, 280]]
+  - id: p_rl4
+    from: { comp: rad4, port: out }
+    to: { comp: valve5, port: mix }
+    kind: rl
+  # RL-Sammelleitung (Kanal y = 470) + RL-Kette über die Mitglieder.
+  - id: p_rl_main
+    from: { comp: valve5, port: out }
+    to: { comp: valve1, port: out }
+    kind: rl
+    via: [[1550, 280], [1550, 470], [798, 470], [798, 280]]
+  - id: p_rl_g3
+    from: { comp: valve1, port: in }
+    to: { comp: valve3, port: out }
+    kind: rl
+  - id: p_rl_g2
+    from: { comp: valve3, port: in }
+    to: { comp: valve0, port: out }
+    kind: rl
+  - id: p_rl_g1
+    from: { comp: valve0, port: in }
+    to: { comp: boiler1, port: bottom }
+    kind: rl
+  - id: p_beimisch
+    from: { comp: valve3, port: mix }
+    to: { comp: mix1, port: bottom }
+    kind: rl
+
+readouts:
+  - id: t_vl
+    at: { comp: mix1, port: top }
+    label: "T VL"
+    value_key: t_vl
+
+labels:
+  - id: legende
+    at: [40, 545]
+    text: "L04 Kette: 5 Gruppen, 13 Komponenten, 17 Pipes"
+    anchor: start

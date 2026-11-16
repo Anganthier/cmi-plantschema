@@ -10,6 +10,20 @@ from plantschema.io import load_schema
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+#: S4-L4: Layout-Test-Ladegerade (synthetische Stufen L00 … L06 +
+#: getrennte Negativ-Stufen unter `ladder/negative/`).
+LADDER = FIXTURES / "ladder"
+
+
+def ladder_levels() -> list[Path]:
+    """Alle positiven Ladder-Stufen (`ladder/L*.yaml`), sortiert L00 → Lnn."""
+    return sorted(LADDER.glob("L*.yaml"))
+
+
+def ladder_negatives() -> list[Path]:
+    """Alle Ladder-Negativ-Stufen (`ladder/negative/*.yaml`), sortiert."""
+    return sorted((LADDER / "negative").glob("*.yaml"))
+
 
 def fx(name: str) -> Path:
     """Fixture-Pfad: minimal / invalid / colliding / rich / rich-groups."""
@@ -32,6 +46,8 @@ def fx(name: str) -> Path:
             FIXTURES / "colliding" / "component-foreign-group-box.yaml",
         "colliding-group-box-label":
             FIXTURES / "colliding" / "group-box-label.yaml",
+        "ladder-negative-group-box-overlap":
+            LADDER / "negative" / "group-box-overlap.yaml",
     }[name]
 
 

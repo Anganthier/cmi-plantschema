@@ -46,7 +46,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
-from .model import Pipe, Point
+from .model import Pipe, Point, Schema
 from .symbols import port_offset
 
 __all__ = [
@@ -57,6 +57,7 @@ __all__ = [
     "port_position",
     "route_groups",
     "route_pipe",
+    "schema_routes",
 ]
 
 #: Kanal-Offset (R-37): Detour-Linie liegt 1 px außerhalb der Box-Kante
@@ -233,6 +234,43 @@ def route_groups(
         from_pos,
         to_pos,
     ))
+
+
+def schema_routes(schema: Schema) -> list[list[Point]]:
+    """Gruppen-bewusste Punktesequenzen aller Pipes (S4-L4, R-37) —
+    gleiche Geometrie wie `emit.compute_layout` (via-Override +
+    Kanal-Detour gegen fremde Boxen), Schema-Reihenfolge.
+
+    Pipes mit unbekanntem Ende (Validierungs-Problem) werden
+    übersprungen. Konsument: Slot-Evaluation (`place`), damit Auto-Slots
+    gegen die TATSÄCHLICH emittierte Route geprüft werden statt gegen
+    den nie gezeichneten Manhattan-Fallback.
+    """
+    comps = {c.id: c for c in schema.components}
+    boxes = [
+        (float(g.at[0]), float(g.at[1]),
+         float(g.at[0] + g.size[0]), float(g.at[1] + g.size[1]))
+        for g in schema.groups
+    ]
+    owner: dict[str, int] = {}
+    for i, g in enumerate(schema.groups):
+        for m in g.members:
+            owner.setdefault(m, i)
+    out: list[list[Point]] = []
+    for p in schema.pipes:
+        cf, ct = comps.get(p.from_.comp), comps.get(p.to.comp)
+        if cf is None or ct is None:
+            continue
+        fp = port_position(cf.type, cf.at, p.from_.port)
+        tp = port_position(ct.type, ct.at, p.to.port)
+        gi, gj = owner.get(p.from_.comp), owner.get(p.to.comp)
+        foreign = (
+            [b for i, b in enumerate(boxes) if i not in (gi, gj)]
+            if gi is not None and gj is not None and gi != gj
+            else []
+        )
+        out.append(route_groups(p, fp, tp, foreign_boxes=foreign))
+    return out
 
 
 def _dedup(points: list[Point]) -> list[Point]:

@@ -1,0 +1,46 @@
+# S4-L4 Ladder L01 — Minimalkombi: 1 Gruppe, Hub (tank) + 3 Mitglieder
+# (boiler, pump, valve), 4 Pipes (VL/RL). Baut auf L00 auf (Puffer als
+# Zentrum). Test: Spalten-Split (3 → 2 links + 1 rechts) + Port-
+# Ortungs-Refinement (alle Mitglieder nutzen links+rechts → "auto").
+schema: plantschema/v1
+canvas: { width: 600, height: 440, background: "#0b1220" }
+
+components:
+  - id: tank1
+    type: tank-buffer
+    label: { text: "Puffer", sub: "500 L" }
+  - id: boiler1
+    type: boiler-oil
+    label: { text: "Kessel" }
+  - id: pump1
+    type: pump
+    label: { text: "P1" }
+  - id: valve1
+    type: valve-2way
+    label: { text: "V1" }
+
+groups:
+  - id: g_store
+    label: "Speicher"
+    members: [tank1, boiler1, pump1, valve1]
+    hub: tank1
+    at: [40, 40]
+    size: [400, 340]
+
+pipes:
+  - id: p_vl
+    from: { comp: boiler1, port: right }
+    to: { comp: tank1, port: left }
+    kind: vl
+  - id: p_rl
+    from: { comp: tank1, port: right }
+    to: { comp: pump1, port: in }
+    kind: rl
+  - id: p_pump
+    from: { comp: pump1, port: out }
+    to: { comp: valve1, port: in }
+    kind: rl
+  - id: p_ret
+    from: { comp: valve1, port: out }
+    to: { comp: boiler1, port: left }
+    kind: rl
