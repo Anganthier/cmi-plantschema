@@ -19,13 +19,23 @@ Geprüft (cmi-`svg_layout_check.py`-Kanon, Bounding-Box-Heuristik):
 - **GROUP-BOX** (`group-box`, S4-L1, R-35): Overlap zweier Makro-
   Gruppen-Boxen (AABB) → Kollision; gleiche `OVERLAP_THRESHOLD`-
   Methodik wie die Text-Box-Edge-Checks (> 50 % der kleineren Box-
-  Fläche). (GROUP-BOX×LABEL folgt in S4-L3 — nicht Teil dieses Gates.)
+  Fläche).
 - **COMPONENT-OUTSIDE-GROUP-BOX** (`component-outside-group-box`,
   S4-L2, R-36): Mitglied-Komponente, deren Symbol-BBox (aus
   `symbols.SYMBOL_BOUNDS`) die **EIGENE** Makro-Gruppen-Box verlässt
   → Kollision; Methode wie die bestehenden Box-Checks (AABB:
   `component_bounds` × `group_box`, strikt: > 0 px Überstand).
-  Fremde-Box-Prüfung (Komponente in FREMDER Box) folgt in S4-L3.
+- **COMPONENT-IN-FOREIGN-GROUP-BOX** (`component-in-foreign-group-box`,
+  S4-L3, R-37): Komponente, deren Symbol-BBox eine **FREMDE**
+  Gruppen-Box überlappt (> 0 px, gleiche AABB-Methodik wie
+  COMPONENT-OUTSIDE-GROUP-BOX) → Kollision (Fehleinsortierung-Signal);
+  die EIGENE Box zählt nicht (das ist R-36s Gate).
+- **GROUP-BOX×LABEL** (`group-box-label`, S4-L3, R-37): Label (freies
+  oder an ein Mitglied gebundenes) überlappt eine Gruppen-Box-Kante
+  mit > 50 % der Label-Text-Fläche (`OVERLAP_THRESHOLD`, gleiche
+  Schwelle wie die bestehenden Box-Checks) → Kollision; ein gebundenes
+  Label ignoriert die EIGENE Gruppen-Box des Hosts, prüft aber alle
+  fremden. (GROUP-BOX×LABEL war R-35-Ankündigung, in S4-L3 gelandet.)
 
 Kanon: `WIDTH_FACTOR=0.52`, `HEIGHT_FACTOR=1.2`, Sampling 5 px
 (cmi `sample_segment`); `text-anchor`-Korrektur in der BBox
@@ -97,6 +107,8 @@ class Collision:
     kind: str  # "text-text" | "line-text" | "text-box-edge" | "symbol-text"
     #            | "readout-size" | "group-box" (S4-L1, R-35)
     #            | "component-outside-group-box" (S4-L2, R-36)
+    #            | "component-in-foreign-group-box" (S4-L3, R-37)
+    #            | "group-box-label" (S4-L3, R-37)
     elem_a: str
     elem_b: str
     x: int
@@ -206,7 +218,7 @@ def _check_component_outside_group_box(
     Komponente außerhalb der EIGENEN Makro-Gruppen-Box (AABB; strikt
     > 0 px Überstand, Methode wie die bestehenden Box-Checks).
 
-    Fremde-Box-Prüfung (Komponente in FREMDER Box) folgt in S4-L3.
+    (Fremde-Box-Prüfung: COMPONENT-IN-FOREIGN-GROUP-BOX, S4-L3, R-37.)
     Kollisions-Koordinate = Überstandspunkt: Symbol-BBox-Mitte
     (int-gerundet); eine Kollision pro (Komponente, Gruppe)-Paar,
     deterministische Schema-Reihenfolge (Komponenten × Gruppen).
@@ -219,11 +231,13 @@ def _check_component_outside_group_box(
             owner.setdefault(m, i)
     for c in components:
         gi = owner.get(c.id)
-        if gi is None or c.at is None:
-            continue  # nicht-gruppig / ungeplante Komponente (validate)
+        if c.at is None:
+            continue  # ungeplante Komponente (validate)
+        cb = component_bounds(c.type, c.at)
+        if gi is None:
+            continue  # nicht-gruppig: keine EIGENE Box → kein R-36-Treffer
         box = group_box(groups[gi])
         assert c.at is not None
-        cb = component_bounds(c.type, c.at)
         over_x = max(box[0] - cb[0], 0.0, cb[2] - box[2])
         over_y = max(box[1] - cb[1], 0.0, cb[3] - box[3])
         if over_x <= 0 and over_y <= 0:
@@ -236,6 +250,108 @@ def _check_component_outside_group_box(
             f"groups[{gi}].at={groups[gi].at!r} size={groups[gi].size!r} "
             f"(Überstand x={over_x:.0f} px, y={over_y:.0f} px; R-36)",
         ))
+
+
+def _check_component_in_foreign_group_box(
+    components: Sequence[Component],
+    groups: Sequence[Group],
+    out: list[Collision],
+) -> None:
+    """COMPONENT-IN-FOREIGN-GROUP-BOX-Gate (S4-L3, R-37): Komponente
+    innerhalb/überlappend mit der Box einer Gruppe, der sie NICHT
+    angehört (AABB: `component_bounds` × `group_box`, > 0 px Overlap —
+    gleiche strikte Methodik wie die bestehenden Box-Checks, R-36).
+    Die EIGENE Box wird nicht geprüft (das ist
+    COMPONENT-OUTSIDE-GROUP-BOX, R-36). Signalisiert Fehleinsortierung
+    (Member in der falschen Box). Eine Kollision pro
+    (Komponente, fremde-Gruppe)-Paar, deterministische Schema-
+    Reihenfolge.
+    """
+    if not groups:
+        return
+    owner: dict[str, int] = {}
+    for i, g in enumerate(groups):
+        for m in g.members:
+            owner.setdefault(m, i)
+    for c in components:
+        if c.at is None:
+            continue  # ungeplante Komponente (validate)
+        cb = component_bounds(c.type, c.at)
+        own = owner.get(c.id)
+        for i, g in enumerate(groups):
+            if i == own:
+                continue  # eigene Box: R-36s Zuständigkeit
+            box = group_box(g)
+            ov = _overlap_area(cb, box)
+            if ov > 0.0:
+                out.append(Collision(
+                    "component-in-foreign-group-box",
+                    f"comp-{c.id}", f"group-{g.id}",
+                    int(round((cb[0] + cb[2]) / 2)),
+                    int(round((cb[1] + cb[3]) / 2)),
+                    f"Komponente {c.id!r} (Gruppe: "
+                    f"{groups[own].id if own is not None else 'keine'}) in "
+                    f"fremder Gruppen-Box {g.id!r} (Overlap "
+                    f"{ov:.0f} px² > 0; R-37)",
+                ))
+
+
+def _check_group_box_labels(
+    texts: Sequence[TextElem],
+    groups: Sequence[Group],
+    labels: Sequence[Label],
+    out: list[Collision],
+) -> None:
+    """GROUP-BOX×LABEL-Gate (S4-L3, R-37): Label (`.txt`, `lbl-*`),
+    das eine Gruppen-Box-Kante mit > 50 % der Label-Text-Fläche
+    überlappt (`OVERLAP_THRESHOLD`, gleiche Schwelle/Methodik wie die
+    bestehenden Box-Checks: Overlap-Anteil der **Text**-Fläche).
+
+    - Freies Label (ohne Host) → alle Gruppen-Boxen.
+    - Gebundenes Label (`comp` = Mitglied) → die EIGENE Gruppen-Box des
+      Hosts wird ignoriert, alle fremden Boxen werden geprüft.
+    - Nicht-Label-Texte (Readout-/Komponenten-Texte) werden nicht
+      geprüft (Bindungs-/Komponenten-Texte ≠ „freies Label").
+
+    Eine Kollision pro (Label, Box)-Paar, deterministische
+    Schema-Reihenfolge.
+    """
+    if not groups:
+        return
+    host_group: dict[str, int] = {}
+    for i, g in enumerate(groups):
+        for m in g.members:
+            host_group.setdefault(m, i)
+    label_index: dict[str, Label] = {
+        f"lbl-{lbl.id}": lbl for lbl in labels
+    }
+    boxes = [(g, group_box(g)) for g in groups]
+    for t in texts:
+        if not t.elem_id.startswith("lbl-") or not t.text:
+            continue
+        lbl = label_index.get(t.elem_id)
+        if lbl is None or lbl.comp is None:
+            skip: int | None = None  # freies Label: alle Boxen
+        else:
+            skip = host_group.get(lbl.comp)
+        tb = text_bbox(t)
+        text_area = _area(tb)
+        if text_area <= 0:
+            continue
+        for i, (g, gb) in enumerate(boxes):
+            if i == skip:
+                continue  # eigene Box des Host-Mitglieds (R-37)
+            ov = _overlap_area(tb, gb)
+            if ov > OVERLAP_THRESHOLD * text_area:
+                out.append(Collision(
+                    "group-box-label",
+                    t.elem_id, f"group-{g.id}",
+                    int(round(tb[0])), int(round(tb[1])),
+                    f"Label {t.text!r} zu "
+                    f"{100.0 * ov / text_area:.0f} % in der Gruppen-Box "
+                    f"{g.id!r} (Schwelle "
+                    f"{OVERLAP_THRESHOLD * 100.0:.0f} %, R-37)",
+                ))
 
 
 def _check_readout_size(texts: Sequence[TextElem], out: list[Collision]) -> None:
@@ -281,6 +397,11 @@ def detect_collisions(
       + (S4-L2, R-36) COMPONENT-OUTSIDE-GROUP-BOX-Check (Mitglied
       außerhalb der EIGENEN Box, strikt > 0 px; `components` +
       `groups` zusammen).
+      + (S4-L3, R-37) COMPONENT-IN-FOREIGN-GROUP-BOX-Check (Komponente
+      in FREMDER Box, strikt > 0 px Overlap, eigene Box ausgenommen)
+      + GROUP-BOX×LABEL-Check (Label mit > 50 % Text-Fläche in
+      fremder Box; gebundene Labels ignorieren die eigene Box;
+      `labels` + `groups` + `texts` zusammen).
     """
     component_boxes: dict[str, tuple[float, float, float, float]] | None = (
         {c.id: component_bounds(c.type, c.at)
@@ -288,8 +409,8 @@ def detect_collisions(
         if components
         else None
     )
-    _ = readouts, labels  # R-34-API-Vertrag (s. Docstring)
-    return _detect(texts, pipes, component_boxes, groups, components)
+    _ = readouts  # R-34-API-Vertrag (s. Docstring)
+    return _detect(texts, pipes, component_boxes, groups, components, labels)
 
 
 def _detect(
@@ -298,10 +419,13 @@ def _detect(
     component_boxes: dict[str, tuple[float, float, float, float]] | None,
     groups: Sequence[Group] = (),
     components: Sequence[Component] = (),
+    labels: Sequence[Label] = (),
 ) -> list[Collision]:
     """S3-Check-Set (R-34) + S4-L1-Gruppe-Check (R-35) +
-    S4-L2-Mitglied-Check (R-36): TEXT×TEXT, LINE×TEXT, TEXT×BOX-Kante,
-    USE×TEXT, Readout-Größe, GROUP-BOX, COMPONENT-OUTSIDE-GROUP-BOX."""
+    S4-L2-Mitglied-Check (R-36) + S4-L3-Gruppen-Checks (R-37):
+    TEXT×TEXT, LINE×TEXT, TEXT×BOX-Kante, USE×TEXT, Readout-Größe,
+    GROUP-BOX, COMPONENT-OUTSIDE-GROUP-BOX,
+    COMPONENT-IN-FOREIGN-GROUP-BOX, GROUP-BOX×LABEL."""
     out: list[Collision] = []
     boxes = [(t, text_bbox(t)) for t in texts if t.text]
 
@@ -366,6 +490,10 @@ def _detect(
     _check_group_boxes(groups, out)
     # 7) COMPONENT-OUTSIDE-GROUP-BOX (S4-L2, R-36).
     _check_component_outside_group_box(components, groups, out)
+    # 8) COMPONENT-IN-FOREIGN-GROUP-BOX (S4-L3, R-37).
+    _check_component_in_foreign_group_box(components, groups, out)
+    # 9) GROUP-BOX×LABEL (S4-L3, R-37).
+    _check_group_box_labels(texts, groups, labels, out)
     return out
 
 

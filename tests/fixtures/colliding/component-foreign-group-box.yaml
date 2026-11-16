@@ -1,0 +1,28 @@
+# S4-L3-Negativ-Fixture (R-37): Komponente in FREMDER Gruppen-Box —
+# p2 (Pump, at=(300,200)) ist Mitglied von g1 (40..260 × 40..260), liegt
+# aber vollständig IN der Box von g2 (260..460 × 180..380)
+# (Pump-Bounds 280..320 × 187..222 ⊂ g2-Box, Overlap 40×35 px² > 0)
+# → COMPONENT-IN-FOREIGN-GROUP-BOX (check exit 3), Kollisionszeile
+# `comp-p2` × `group-g2`. p2 verlässt seine EIGENE Box nach rechts
+# (→ zusätzlich COMPONENT-OUTSIDE-GROUP-BOX `comp-p2` × `group-g1`).
+# Keine Pipes/Labels/Readouts → keine weiteren Kollisionen.
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+components:
+  - id: p1
+    type: pump
+    at: [100, 100]
+  - id: p2
+    type: pump
+    at: [300, 200]
+groups:
+  - id: g1
+    label: "Gruppe A"
+    members: [p1, p2]
+    at: [40, 40]
+    size: [220, 220]
+  - id: g2
+    label: "Gruppe B"
+    members: []
+    at: [260, 180]
+    size: [200, 200]

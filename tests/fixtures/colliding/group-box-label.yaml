@@ -1,0 +1,26 @@
+# S4-L3-Negativ-Fixture (R-37): Label überlappt eine Gruppen-Box-Kante
+# mit > 50 % der Text-Fläche → GROUP-BOX×LABEL (check exit 3),
+# Kollisionszeile `lbl-lbl-edge` × `group-g1`.
+# g1-Box = 100..400 × 100..300; Label „Tank-Text" (14 px, width ≈ 84 px)
+# bei (200,108) anchor=middle → BBox 158..242 × 96.1..111.5: Overlap mit
+# Box = 84×11.5 px² = 75 % der Text-Fläche (> 50 % Schwelle, R-37).
+# p1 (Pump, 150..190 × 187..222) liegt in g1 → keine
+# COMPONENT-OUTSIDE-/FOREIGN-BOX-Kollision; keine weiteren Texte →
+# keine TEXT×TEXT-Prüfung.
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+components:
+  - id: p1
+    type: pump
+    at: [170, 200]
+groups:
+  - id: g1
+    label: "Gruppe A"
+    members: [p1]
+    at: [100, 100]
+    size: [300, 200]
+labels:
+  - id: lbl-edge
+    at: [200, 108]
+    text: "Tank-Text"
+    anchor: middle

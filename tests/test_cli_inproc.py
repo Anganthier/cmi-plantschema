@@ -216,6 +216,79 @@ def test_check_rich_warn_block_exit0():
     assert "Kollision" not in err
 
 
+# ------------------------------------------------------------ S4-L3 (R-37):
+# gruppen-awarees Routing (Positiv: rich-groups-routing mit Kanal-Detour;
+# Negativ: component-foreign-group-box, group-box-label).
+
+
+def test_validate_rich_groups_routing_ok():
+    """S4-L3 (R-37): neue Routing-Fixture → validate exit 0."""
+    rc, err = call("validate", "--in", str(fx("rich-groups-routing")))
+    assert rc == EXIT_OK, err
+
+
+def test_check_rich_groups_routing_exit0():
+    """S4-L3 (R-37): inter-gruppige Fremdkreuzungen werden deterministisch
+    umgeleitet → check exit 0 (0 Kollisionen)."""
+    rc, err = call("check", "--in", str(fx("rich-groups-routing")))
+    assert rc == EXIT_OK, err
+    assert "Kollision" not in err
+
+
+def test_render_rich_groups_routing_exit0_and_deterministic(tmp_path):
+    """S4-L3 E2E (R-37): render exit 0, XML gültig (ET.parse),
+    Byte-Determinismus (2× render → sha256-identisch) + Kanal-Detour
+    im SVG (Pipe-d-Strings mit exakt 3 Umrisspunkten)."""
+    import hashlib
+    import xml.etree.ElementTree as ET
+
+    out1, out2 = tmp_path / "r1.svg", tmp_path / "r2.svg"
+    rc, err = call("render", "--in", str(fx("rich-groups-routing")),
+                   "--out", str(out1))
+    assert rc == EXIT_OK, err
+    ET.parse(out1)  # XML-Validierung
+    content = out1.read_text(encoding="utf-8")
+    # Deterministischer Kanal-Detour (R-37): p_solar_puffer um die
+    # untere Kante von g_kessel (Kanal-Linie y=401), p_ret_solar um die
+    # obere Kante von g_kollektor (Kanal-Linie y=479).
+    assert 'd="M720,390 L720,401 L229,401 L229,600"' in content
+    assert 'd="M720,510 L720,479 L334,479 L334,210"' in content
+    # KEIN Detour: p_misch_solar (kein Fremdkreuz) bleibt im
+    # Manhattan-Fallback; p_solar2/p_pump kreuzen nur die EIGENE
+    # Ziel-Box → unverändert.
+    assert 'd="M229,600 L720,600 L720,470"' in content
+    assert 'd="M219,600 L785,600 L785,450"' in content
+    assert 'd="M813,450 L1140,450 L1140,600"' in content
+    rc, err = call("render", "--in", str(fx("rich-groups-routing")),
+                   "--out", str(out2))
+    assert rc == EXIT_OK, err
+    h1 = hashlib.sha256(out1.read_bytes()).hexdigest()
+    h2 = hashlib.sha256(out2.read_bytes()).hexdigest()
+    assert h1 == h2
+
+
+def test_check_exit3_component_in_foreign_group_box():
+    """S4-L3 (R-37): Komponente in FREMDER Box → exit 3 +
+    COMPONENT-IN-FOREIGN-GROUP-BOX-Zeile."""
+    rc, err = call("check", "--in",
+                   str(fx("colliding-component-foreign-group-box")))
+    assert rc == EXIT_GATE
+    assert "COMPONENT-IN-FOREIGN-GROUP-BOX" in err
+    assert "comp-p2" in err and "group-g2" in err
+    # Die eigene Box-Verletzung (R-36) wird ebenfalls gemeldet.
+    assert "COMPONENT-OUTSIDE-GROUP-BOX" in err
+
+
+def test_check_exit3_group_box_label():
+    """S4-L3 (R-37): Label > 50 % in einer Gruppen-Box → exit 3 +
+    GROUP-BOX-LABEL-Zeile."""
+    rc, err = call("check", "--in", str(fx("colliding-group-box-label")))
+    assert rc == EXIT_GATE
+    assert "GROUP-BOX-LABEL" in err
+    assert "lbl-lbl-edge" in err and "group-g1" in err
+    assert "R-37" in err
+
+
 def test_render_exit2_invalid_no_write(tmp_path):
     out = tmp_path / "x.svg"
     rc, err = call("render", "--in", str(fx("invalid")), "--out", str(out))

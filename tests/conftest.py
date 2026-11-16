@@ -27,6 +27,11 @@ def fx(name: str) -> Path:
         "rich": FIXTURES / "rich" / "installation.yaml",
         "rich-groups": FIXTURES / "rich-groups.yaml",
         "rich-groups-layout": FIXTURES / "rich-groups-layout.yaml",
+        "rich-groups-routing": FIXTURES / "rich-groups-routing.yaml",
+        "colliding-component-foreign-group-box":
+            FIXTURES / "colliding" / "component-foreign-group-box.yaml",
+        "colliding-group-box-label":
+            FIXTURES / "colliding" / "group-box-label.yaml",
     }[name]
 
 

@@ -1,10 +1,34 @@
 """Route-Stufe: Pipe-Geometrie (Punktesequenz + SVG-`path`-d-String).
 
-Strategie (S2):
+Strategie:
 - mit `via`: Autor-Route 1:1 — from-Port → via[0] → … → via[-1] → to-Port.
+  **Author-Override: `via` gewinnt immer** (S4-L3, R-37: auch wenn sie
+  fremde Gruppen-Boxen kreuzt — keine Detour-Einmischung).
 - ohne `via`: orthogonaler Manhattan-Fallback — erst horizontal, dann
-  vertikal, einziger Umrisspunkt. Bewusst simpel (S3: Kanal-Hinweis/
-  Vermeidungslogik, wenn das Kollisions-Gate den Fallback bewertet).
+  vertikal, einziger Umrisspunkt (S2).
+- **Kanal-Regel (S4-L3, R-37, gruppen-bewusst):** ohne `via` +
+  inter-Gruppe (from- und to-Ende in VERSCHIEDENEN Gruppen) prüft
+  `route_groups` den Fallback-Pfad gegen alle **fremden** Gruppen-Boxen
+  (AABB-Interior: ein Orthogonal-Segment „kreuzt" eine Box, wenn es
+  deren Inneres schneidet; Tangential entlang einer Kante ≠ Kreuzung).
+  Kreuzt das **erste** Fremdkreuzungs-Segment (niedrigster
+  Segmente-Index, dann Box-Reihenfolge) eine fremde Box → eindeutiger
+  Detour: ein Kanal-Panel (Kanal = Lücken-Linie zwischen den
+  betroffenen Boxen) wird eingefügt. Die Box wird über ihre
+  **nächstgelegene Kante in Segment-Achsenrichtung** umgangen:
+  horizontales Kreuzungs-Segment → horizontale Kanal-Linie 1 px
+  außerhalb der nächstgelegenen horizontalen Kante (obere/untere;
+  Gleichstand → obere), vertikales Segment analog (linke/rechte;
+  Gleichstand → linke). Route: from-Port → senkrecht auf die
+  Kanal-Linie → entlang der Linie → senkrecht ab zum to-Port (2
+  Detour-Viapunkte, eine eindeutige Route). Die Route wird NICHT
+  wiederholt geprüft: kreuzt der Detour selbst eine weitere Box,
+  meldet das Kollisions-Gate (Exit 3) — erwartetes Signal, kein
+  Backtracking (R-37). Intra-Gruppe (beide Enden in derselben
+  Gruppe) bzw. ein nicht-gruppiges Ende → unverändert (kein Detour).
+  Deterministisch: keine Random/Zeit/Hash-Heuristik; gleiche Eingabe
+  → gleiche Punktesequenz.
+
 - **Pfeil-Endpunkte (R-29, S2):** kein `marker-end` (Farbe aus
   `context-stroke` nicht portabel) → stattdessen ein kleines Dreieck am
   Pipe-Ende, rotiert nach Letztem-Segment-Vektor, als `<path class="pipe-arrow">`
@@ -20,11 +44,27 @@ Punkte-Liste (`PipeGeometry.points`) ist API für das S3-Kollisions-Gate
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 from .model import Pipe, Point
 from .symbols import port_offset
 
-__all__ = ["PipeGeometry", "arrow_d", "path_d", "port_position", "route_pipe"]
+__all__ = [
+    "PipeGeometry",
+    "arrow_d",
+    "manhattan_fallback",
+    "path_d",
+    "port_position",
+    "route_groups",
+    "route_pipe",
+]
+
+#: Kanal-Offset (R-37): Detour-Linie liegt 1 px außerhalb der Box-Kante
+#: (Kanal = Linie zwischen den betroffenen Boxen, kein Kanten-Paint).
+CHANNEL_OFFSET: int = 1
+
+#: Gruppen-Box-AABB für Kanal-Checks: `(x0, y0, x1, y1)`, float.
+GroupBox = tuple[float, float, float, float]
 
 
 def port_position(
@@ -57,16 +97,142 @@ def route_pipe(
     """Punktesequenz einer Pipe (Start-, optional via-Punkte, Endpunkt).
 
     Die Liste ist stabile API für das S3-Kollisions-Gate (Segmente).
+    S4-L3 (R-37): gruppen-bewusstes Routing läuft über `route_groups`
+    (via-Override + Kanal-Detour); dieser Einstieg bleibt via-1:1 +
+    Manhattan-Fallback (bestehende Tests/API unverändert).
     """
     pts: list[Point] = [from_pos]
     if pipe.via:
         pts.extend(pipe.via)
     else:
         # Manhattan-Fallback: horizontal-dann-vertikal, 1 Umrisspunkt.
-        if from_pos[0] != to_pos[0] and from_pos[1] != to_pos[1]:
-            pts.append((to_pos[0], from_pos[1]))
+        pts.extend(manhattan_fallback(from_pos, to_pos))
     pts.append(to_pos)
     return _dedup(pts)
+
+
+def manhattan_fallback(from_pos: Point, to_pos: Point) -> list[Point]:
+    """Orthogonaler Fallback ohne `via` (S2): erst horizontal, dann
+    vertikal, genau 1 Umrisspunkt (oder leer, wenn ausgerichtet)."""
+    if from_pos[0] != to_pos[0] and from_pos[1] != to_pos[1]:
+        return [(to_pos[0], from_pos[1])]
+    return []
+
+
+def _seg_crosses_box(
+    p1: Point, p2: Point, box: GroupBox,
+) -> bool:
+    """Orthogonal-Segment × Box-INTERIOR (R-37-Kanal-Prädikat).
+
+    Horizontales Segment auf Höhe `y` kreuzt, wenn `y` im Box-Innen-
+    band `(y0, y1)` liegt und der x-Intervall die Box x-umspannt
+    (streng); vertikal analog. Tangential entlang einer Kante (y =
+    Kante bzw. Segment endet auf Box-Intervall-Kante) = keine
+    Kreuzung (Pipe rückt an/entlang der Box, läuft nicht durch).
+    """
+    if p1[1] == p2[1]:  # horizontal auf Höhe y
+        lo, hi = min(p1[0], p2[0]), max(p1[0], p2[0])
+        return box[1] < p1[1] < box[3] and lo < box[2] and hi > box[0]
+    # vertikal auf Linie x
+    lo, hi = min(p1[1], p2[1]), max(p1[1], p2[1])
+    return box[0] < p1[0] < box[2] and lo < box[3] and hi > box[1]
+
+
+def _first_foreign_crossing(
+    points: list[Point],
+    foreign: Sequence[GroupBox],
+) -> tuple[int, int] | None:
+    """Erstes Fremde-Box-Kreuzungs-Segment des (orthogonalen) Pfads.
+
+    Returns `(seg-index, box-index)` des niedrigsten Segments, das eine
+    fremde Box kreuzt (deterministisch: Segment-Reihenfolge, dann
+    Box-Reihenfolge); `None` = keine Fremdkreuzung.
+    """
+    for i in range(len(points) - 1):
+        for j, box in enumerate(foreign):
+            if _seg_crosses_box(points[i], points[i + 1], box):
+                return i, j
+    return None
+
+
+def _channel_detour(
+    seg: tuple[Point, Point],
+    box: GroupBox,
+    from_pos: Point,
+    to_pos: Point,
+) -> list[Point]:
+    """Eindeutiger Kanal-Detour um `box` (R-37, s. Modul-Docstring).
+
+    Nächstgelegene Kante der Box in Segment-Achsenrichtung:
+    horizontales Segment → nächste horizontale Kante (Exakt-Tiebreak:
+    obere Kante), vertikales Segment → nächste vertikale Kante
+    (Exakt-Tiebreak: linke Kante). Detour-Linie = Kante ±
+    `CHANNEL_OFFSET` px (außen, d. h. weg vom Box-Interior).
+    """
+    a, b = seg
+    if a[1] == b[1]:  # horizontales Segment: Kanal über/unter der Box
+        y = a[1]
+        dist_top, dist_bottom = abs(y - box[1]), abs(y - box[3])
+        # Exakt-Tiebreak → obere Kante (nächste Kante, ≤-Vergleich).
+        lane = int(box[1] - CHANNEL_OFFSET) if dist_top <= dist_bottom \
+            else int(box[3] + CHANNEL_OFFSET)
+        return [
+            from_pos,
+            (from_pos[0], lane),
+            (to_pos[0], lane),
+            to_pos,
+        ]
+    x = a[0]  # vertikales Segment: Kanal links/rechts der Box
+    dist_left, dist_right = abs(x - box[0]), abs(x - box[2])
+    # Exakt-Tiebreak → linke Kante (nächste Kante, ≤-Vergleich).
+    lane = int(box[0] - CHANNEL_OFFSET) if dist_left <= dist_right \
+        else int(box[2] + CHANNEL_OFFSET)
+    return [
+        from_pos,
+        (lane, from_pos[1]),
+        (lane, to_pos[1]),
+        to_pos,
+    ]
+
+
+def route_groups(
+    pipe: Pipe,
+    from_pos: Point,
+    to_pos: Point,
+    foreign_boxes: Sequence[GroupBox] = (),
+    use_channel: bool = True,
+) -> list[Point]:
+    """Punktesequenz mit S4-L3-Gruppen-Bewusstsein (R-37).
+
+    - `via` gesetzt → Autor-Route 1:1 (Override gewinnt immer, auch
+      bei Fremdkreuzung: kein Detour, der Router greift nicht ein).
+    - ohne `via`, intra-Gruppe oder `use_channel=False` → wie
+      `route_pipe` (Manhattan-Fallback).
+    - ohne `via`, inter-Gruppe (`foreign_boxes` nicht leer): kreuzt
+      der Fallback eine fremde Box-Interior-AABB (Tangential zählt
+      nicht) → eindeutiger Kanal-Detour am ersten Fremdkreuzungs-
+      Segment (s. `_channel_detour`); sonst Fallback. Deterministisch,
+      keine Iteration/Backtracking.
+
+    `foreign_boxes` = AABBs der Gruppen, der WEDER from- noch to-Ende
+    angehören (aufrufseitig bereinigt, s. `emit.compute_layout`).
+    """
+    if pipe.via:
+        pts: list[Point] = [from_pos, *pipe.via, to_pos]
+    else:
+        pts = [from_pos, *manhattan_fallback(from_pos, to_pos), to_pos]
+    if pipe.via or not use_channel or not foreign_boxes:
+        return _dedup(pts)
+    hit = _first_foreign_crossing(pts, foreign_boxes)
+    if hit is None:
+        return _dedup(pts)
+    seg_i, box_i = hit
+    return _dedup(_channel_detour(
+        (pts[seg_i], pts[seg_i + 1]),
+        foreign_boxes[box_i],
+        from_pos,
+        to_pos,
+    ))
 
 
 def _dedup(points: list[Point]) -> list[Point]:

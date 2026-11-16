@@ -62,11 +62,12 @@ labels: [ … ]
 - **R-8 (M)** `from`/`to.comp` existiert → sonst `ref-component`.
 - **R-9 (M)** `from`/`to.port` liegt im (Override-geprägten) Port-Set des
   Komponententyps → sonst `ref-port`.
-- **R-10 (S)** `via` = autorisierte Route, 1:1 übernommen; ohne `via` =
-  Manhattan-Fallback (horizontal-dann-vertikal, 1 Umrisspunkt; S3:
-  Kanal-Hinweis/Vermeidungslogik, wenn das Kollisions-Gate den Fallback
-  bewertet). Die Punktesequenz (`PipeGeometry.points`) ist stabile
-  API für das S3-Gate (LINE×TEXT-Segmente).
+- **R-10 (S)** `via` = autorisierte Route, 1:1 übernommen (Autor-
+  Override gewinnt immer, S4-L3/R-37); ohne `via` = Manhattan-Fallback
+  (horizontal-dann-vertikal, 1 Umrisspunkt) + S4-L3-Kanal-Regel
+  (R-37: gruppen-bewusstes Umleiten bei inter-gruppiger Fremdkreuzung,
+  nur ohne `via`). Die Punktesequenz (`PipeGeometry.points`) ist
+  stabile API für das Kollisions-Gate (LINE×TEXT-Segmente).
 
 ## 4b. Group (S4-L1, R-35)
 
@@ -105,8 +106,8 @@ labels: [ … ]
   gesetzt). Kollisions-Gate: **GROUP-BOX** (Overlap zweier Makro-Boxen
   → Kollision, exit 3; gleiche `OVERLAP_THRESHOLD`-Methodik wie die
   Text-Box-Edge-Checks: Overlap-Anteil der **kleineren** Box-Fläche
-  > 50 %, eine Kollision pro Paar). GROUP-BOX×LABEL folgt in S4-L3
-   (Fremde-Box-Prüfung: Komponente in FREMDER Box).
+   > 50 %, eine Kollision pro Paar). GROUP-BOX×LABEL + Fremde-Box-
+   Prüfung (Komponente in FREMDER Box) = R-37 (S4-L3).
 
 - **R-36 (M, S4-L2) Mikro-Layout-Engine (intra-Gruppen-Platzierung):**
   Koordinaten werden GENERIERT, nicht gepflegt: die Autor-Pflicht ist
@@ -150,11 +151,56 @@ labels: [ … ]
     dessen Symbol-BBox (`SYMBOL_BOUNDS`) die **EIGENE** Makro-Box
     verlässt → Kollision (Exit 3; strikt > 0 px Überstand,
     Methode wie die bestehenden Box-Checks; Koordinaten =
-    Symbol-BBox-Mitte). Fremde-Box-Prüfung folgt in S4-L3.
-  - **Routing-Verallgemeinerung** (via-Kanäle/Vermeidungslogik aus
-    Gruppen-Layouts) folgt als **R-37 (S4-L3)** — R-36 generiert
-    nur die Plazierung, die via-Routen bleiben Autor-Pflicht
-    (R-10).
+    Symbol-BBox-Mitte). Fremde-Box-Prüfung = R-37.
+  - **Routing-Verallgemeinerung** (Kanal-Konvention + Fremde-Box-
+    Gates) folgt als **R-37 (S4-L3)**.
+
+- **R-37 (M, S4-L3) gruppen-awarees Routing (Kanal-Konvention) +
+  Fremde-Box-Gates:** Das Routing (`route.py::route_groups`, aufgerufen
+  aus `emit.compute_layout`) ist gruppen-bewusst; „fremde Box" =
+  Makro-Box einer Gruppe, der WEDER das from- noch das to-Ende der
+  Pipe angehört (eigene Boxen beider Enden werden ausgenommen —
+  eine Leitung, die in ihre Ziel-Box einläuft, ist normal).
+  - **Kanal-Konvention (deterministisch):** gilt NUR ohne `via` UND
+    bei inter-gruppigen Pipes (beide Enden in verschiedenen Gruppen);
+    intra-gruppige Pipes (und Pipes mit nicht-gruppigem Ende) bleiben
+    unverändert (via + Manhattan-Fallback). Kreuzt der orthogonale
+    Fallback-Pfad das INTERIOR einer fremden Box-AABB (Kreuzungs-
+    Prädikat: Orthogonal-Segment im Box-Innenband, Kanten-Tangenz
+    zählt NICHT als Kreuzung), wird am **ersten** Fremdkreuzungs-
+    Segment (niedrigster Segmente-Index, dann Box-Reihenfolge) ein
+    eindeutiger Detour eingefügt: Die Leitung wird über die
+    **nächste Kante** der Box umgeleitet (Segment-Achse: horizontales
+    Kreuzungs-Segment → nächste horizontale Kante, vertikales →
+    nächste vertikale Kante; Gleichstand → deterministischer Tiebreak:
+    obere bzw. linke Kante). Detour-Linie = Kante ± 1 px (außen,
+    „Kanal" = Linie zwischen den betroffenen Boxen, kein Kanten-Paint):
+    von from-Port senkrecht auf die Kanal-Linie, entlang der Linie
+    zum to-Port-Koordinatenwert, senkrecht ab zum to-Port.
+  - **via-Override-Hierarchie:** `via` (Author-Route) gewinnt
+    **immer** über den Detour (R-10) — auch wenn sie eine fremde Box
+    kreuzt; der Router greift in via-Routen nicht ein.
+  - **Determinismus-Garantie:** gleiche Eingabe → gleiche
+    Punktesequenz; keine Random-/Zeit-/Hash-Heuristik, keine
+    Iteration/Backtracking (KEIN allgemeines Hindernis-Vermeidungs-
+    Routing). Kreuzt der Detour selbst eine weitere Box (neu), wird
+    der Pfad so emittiert — das Kollisions-Gate meldet es (Exit 3)
+    als erwartetes Signal, kein Crash.
+  - **Gates (S4-L3):**
+    - **COMPONENT-IN-FOREIGN-GROUP-BOX** (`component-in-foreign-
+      group-box`, Kollision, Exit 3): Komponente, deren Symbol-BBox
+      eine **fremde** Makro-Box überlappt (AABB-Overlap > 0 px,
+      gleiche strikte Methodik wie COMPONENT-OUTSIDE-GROUP-BOX);
+      die EIGENE Box zählt nicht (das ist R-36s Gate); signalisiert
+      Fehleinsortierung; eine Kollision pro (Komponente, fremde
+      Gruppe)-Paar.
+    - **GROUP-BOX×LABEL** (`group-box-label`, Kollision, Exit 3):
+      Label (`.txt`, `lbl-*`) überlappt eine Gruppen-Box-Kante mit
+      > 50 % der Label-Text-Fläche (`OVERLAP_THRESHOLD`, gleiche
+      Schwelle wie die bestehenden Box-Checks); freies Label (ohne
+      Host) → alle Boxen; gebundenes Label (`comp` = Mitglied) →
+      die EIGENE Gruppen-Box des Hosts wird ignoriert, alle fremden
+      Boxen werden geprüft. (R-35-Ankündigung, in S4-L3 gelandet.)
 
 ## 5. P&ID-Symbole + Port-Geometrie-Katalog (S2, Seed cmi)
 
@@ -305,6 +351,8 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 | `group-geometry` | `at`/`size` mit Wert ≤ 0 (R-35, Makro-Box-Kanon) |
 | `group-order-member` | `order` ist keine Permutation von `members` (R-36, S4-L2) |
 | `component-placement-missing` | `at: None` + keine/nicht-eindeutige Gruppenzugehörigkeit (R-36, S4-L2) |
+| `component-in-foreign-group-box` | **Kollisions-Gate-Code** (nicht validate; S4-L3, R-37, Exit 3): Komponente in fremder Gruppen-Box (Overlap > 0 px, eigene Box ausgenommen) — s. R-37/§12 |
+| `group-box-label` | **Kollisions-Gate-Code** (nicht validate; S4-L3, R-37, Exit 3): Label > 50 % der Text-Fläche in fremder Gruppen-Box (gebundene Labels: eigene Box ausgenommen) — s. R-37/§12 |
 
 - **R-20 (M)** `validate` liefert **alle** Probleme (nicht nur das erste);
   CLI gibt je Problem eine Zeile aus und exitet 2.
@@ -379,6 +427,12 @@ Text `.txt`); Style-Block enthält cmi-V6.3-Klassen (`.pid`, `.pid-t`,
      Boxen (Kanon s. R-35). 6. **COMPONENT-OUTSIDE-GROUP-BOX**
      (`component-outside-group-box`, R-36/S4-L2): Mitglied außerhalb
      der EIGENEN Makro-Box (Kanon s. R-36).
+   7. **COMPONENT-IN-FOREIGN-GROUP-BOX** (`component-in-foreign-
+      group-box`, R-37/S4-L3): Komponente in FREMDER Makro-Box
+      (Overlap > 0 px; Kanon s. R-37). 8. **GROUP-BOX×LABEL**
+      (`group-box-label`, R-37/S4-L3): Label > 50 % Text-Fläche in
+      fremder Makro-Box (gebundene Labels ignorieren die eigene
+      Box; Kanon s. R-37).
   Kanon-BBox: `text-anchor`-Korrektur (`end` → x = anchor_x − width,
   `middle` → x = anchor_x − width/2; cmi `text_bbox`-Logik).
   **Report-Format:** je Kollision eine Zeile

@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 
 from .model import Schema
 from .place import readout_position, resolve_label
-from .route import PipeGeometry, arrow_d, port_position, route_pipe
+from .route import PipeGeometry, arrow_d, port_position, route_groups
 from .symbols import render_component, render_defs
 
 __all__ = [
@@ -80,16 +80,52 @@ _CSS = (
 )
 
 
+def _group_owner(schema: Schema) -> dict[str, int]:
+    """Component-ID → Gruppen-Index (S4-L3, R-37; deterministisch:
+    Schema-Reihenfolge; Doppel-Mitgliedschaft wäre ein Validate-Problem
+    und überschreibt hier schlicht — Pipeline setzt `validate` voraus)."""
+    owner: dict[str, int] = {}
+    for i, g in enumerate(schema.groups):
+        for m in g.members:
+            owner.setdefault(m, i)
+    return owner
+
+
 def compute_layout(schema: Schema) -> tuple[list[PipeGeometry], dict[str, tuple[int, int]]]:
-    """Pipeline-Hilfsstufe: Routes + Readout-Positionen berechnen."""
+    """Pipeline-Hilfsstufe: Routes + Readout-Positionen berechnen.
+
+    S4-L3 (R-37): Routes laufen gruppen-bewusst via `route_groups`:
+    `via`-Pipes bleiben Autor-Route 1:1; ohne `via` wird bei
+    inter-gruppigen Pipes (from- und to-Ende in verschiedenen Gruppen)
+    der orthogonale Fallback gegen alle **fremden** Gruppen-Box-AABBs
+    geprüft (Kreuzung = Box-Interior; eigene Boxen zählen nicht) und
+    bei erstem Fremdkreuzen deterministisch über den Kanal um die
+    nächste Box-Kante umgeleitet. Intra-Gruppe / keine Gruppen →
+    unverändert (S2-Fallback).
+    """
     comps = {c.id: c for c in schema.components}
+    boxes = {
+        i: (float(g.at[0]), float(g.at[1]),
+            float(g.at[0] + g.size[0]), float(g.at[1] + g.size[1]))
+        for i, g in enumerate(schema.groups)
+    }
+    owner = _group_owner(schema)
     pipes: list[PipeGeometry] = []
     for p in schema.pipes:
         cf, ct = comps[p.from_.comp], comps[p.to.comp]
         fp = port_position(cf.type, cf.at, p.from_.port)
         tp = port_position(ct.type, ct.at, p.to.port)
+        gi, gj = owner.get(p.from_.comp), owner.get(p.to.comp)
+        foreign = (
+            [boxes[i] for i in boxes if i not in (gi, gj)]
+            if gi is not None and gj is not None and gi != gj
+            else []
+        )
         pipes.append(PipeGeometry(
-            p.id, route_pipe(p, fp, tp), p.kind.value, p.flow
+            p.id,
+            route_groups(p, fp, tp, foreign_boxes=foreign),
+            p.kind.value,
+            p.flow,
         ))
     readout_pos: dict[str, tuple[int, int]] = {}
     for r in schema.readouts:

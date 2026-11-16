@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from plantschema.model import Component, Group, Pipe
+from plantschema.model import Component, Group, Label, Pipe
 from plantschema.qa import (
     HEIGHT_FACTOR,
     Collision,
@@ -311,3 +311,199 @@ def test_dedup_two_components_one_collision_each():
     cols = detect_collisions([t], [], components=[p1, p2])
     pair_cols = [c for c in cols if c.elem_b in ("comp-p", "comp-q")]
     assert {c.elem_b for c in pair_cols} == {"comp-p", "comp-q"}
+
+
+# ------------------------------------------------------ S4-L3 (R-37):
+# COMPONENT-IN-FOREIGN-GROUP-BOX + GROUP-BOX×LABEL-Gates.
+
+
+def _group_members(
+    gid: str, at: tuple[int, int], size: tuple[int, int], members: list[str]
+) -> Group:
+    return Group.model_validate({
+        "id": gid, "members": members,
+        "at": list(at), "size": list(size),
+    })
+
+
+def test_component_in_foreign_box_hit():
+    """R-37: p2 in g1, Symbol-BBox liegt in der Box von g2 (fremd) →
+    COMPONENT-IN-FOREIGN-GROUP-BOX; p1 nur in g1 → kein Treffer."""
+    p1 = Component.model_validate(
+        {"id": "p1", "type": "pump", "at": [100, 100]}
+    )
+    p2 = Component.model_validate(
+        {"id": "p2", "type": "pump", "at": [300, 200]}
+    )
+    g1 = _group_members("g1", (40, 40), (220, 220), ["p1", "p2"])
+    g2 = _group_members("g2", (260, 180), (200, 200), [])
+    cols = detect_collisions(
+        [], [], components=[p1, p2], groups=[g1, g2]
+    )
+    # Reihenfolge in `_detect`: R-36 (eigene Box) vor R-37 (fremde Box).
+    assert [c.kind for c in cols] == [
+        "component-outside-group-box",  # p2 verlässt auch g1 (R-36)
+        "component-in-foreign-group-box",
+    ]
+    c = cols[1]
+    assert c.elem_a == "comp-p2" and c.elem_b == "group-g2"
+    assert "R-37" in c.note
+    assert c.line().startswith("COMPONENT-IN-FOREIGN-GROUP-BOX")
+
+
+def test_component_in_own_box_no_foreign_hit():
+    """R-37: Komponente vollständig in der EIGENEN Box → kein
+    FOREIGN-Treffer (die eigene Box ist R-36s Zuständigkeit)."""
+    p1 = Component.model_validate(
+        {"id": "p1", "type": "pump", "at": [100, 100]}
+    )
+    g1 = _group_members("g1", (40, 40), (220, 220), ["p1"])
+    assert detect_collisions([], [], components=[p1], groups=[g1]) == []
+
+
+def test_component_touching_foreign_edge_hit():
+    """R-37: 1-px-Überstand an der Kante einer fremden Box (> 0 px
+    Overlap, strikt) → Kollision (gleiche Strenge wie R-36)."""
+    # Pump-Bounds um (101,100): x 81..121 → 1 px über g2-Linkskante
+    # (x=120) bei 35 px Höhe → Overlap 35 px² > 0.
+    p1 = Component.model_validate(
+        {"id": "p1", "type": "pump", "at": [101, 100]}
+    )
+    g1 = _group_members("g1", (0, 0), (150, 200), ["p1"])
+    g2 = _group_members("g2", (120, 0), (200, 200), [])
+    cols = detect_collisions([], [], components=[p1], groups=[g1, g2])
+    assert [c.kind for c in cols] == ["component-in-foreign-group-box"]
+    assert cols[0].elem_b == "group-g2"
+
+
+def test_component_outside_both_boxes_clean():
+    """R-37: Komponente in der EIGENEN Box, zweite Box disjunkt →
+    beide Gates sauber."""
+    p1 = Component.model_validate(
+        {"id": "p1", "type": "pump", "at": [100, 100]}
+    )
+    g1 = _group_members("g1", (0, 0), (200, 200), ["p1"])
+    g2 = _group_members("g2", (400, 400), (200, 200), [])
+    assert detect_collisions([], [], components=[p1], groups=[g1, g2]) == []
+
+
+def test_component_unplanned_skipped_in_foreign_check():
+    """R-37: ungeplante Komponente (at=None) wird im FOREIGN-Check
+    übersprungen (validate meldet es, s. component-placement-missing)."""
+    p1 = Component.model_validate({"id": "p1", "type": "pump"})
+    g2 = _group_members("g2", (0, 0), (400, 400), [])
+    assert detect_collisions([], [], components=[p1], groups=[g2]) == []
+
+
+def test_ungrouped_component_in_box_hit():
+    """R-37: nicht-gruppige Komponente in fremder (einziger) Box →
+    Kollision (keine eigene Box → alle Boxen sind fremd)."""
+    p1 = Component.model_validate(
+        {"id": "p1", "type": "pump", "at": [100, 100]}
+    )
+    g1 = _group_members("g1", (40, 40), (220, 220), [])
+    cols = detect_collisions([], [], components=[p1], groups=[g1])
+    assert [c.kind for c in cols] == ["component-in-foreign-group-box"]
+
+
+# ------------------------------------------------------------------
+# GROUP-BOX×LABEL (R-37): Label-Text > 50 % in fremder Box-Kante.
+
+
+def _free_label(lid: str, at: tuple[int, int], text: str,
+                anchor: str = "start") -> Label:
+    return Label.model_validate({
+        "id": lid, "at": list(at), "text": text, "anchor": anchor,
+    })
+
+
+def test_group_box_label_free_hit():
+    """R-37: freies Label, > 50 % Text-Fläche in der Box → Kollision.
+    „Tank-Text" (14 px, w ≈ 84 px) bei (200,108) middle → BBox
+    158..242 × 96.1..111.5; Box 100..400 × 100..300 → Overlap
+    84×11.5 = 75 % der Text-Fläche (> 50 %)."""
+    lbl = _free_label("lbl-edge", (200, 108), "Tank-Text", "middle")
+    g1 = _group("g1", (100, 100), (300, 200))
+    cols = detect_collisions(
+        [TextElem("lbl-lbl-edge", "Tank-Text", 14, 200, 108, "middle")],
+        [], labels=[lbl], groups=[g1],
+    )
+    assert [c.kind for c in cols] == ["group-box-label"]
+    c = cols[0]
+    assert c.elem_a == "lbl-lbl-edge" and c.elem_b == "group-g1"
+    assert "R-37" in c.note
+    assert c.line().startswith("GROUP-BOX-LABEL")
+
+
+def test_group_box_label_below_threshold_clean():
+    """R-37: < 50 % Overlap-Anteil → erlaubt („Label neben Box")."""
+    # Label komplett INNEN (BBox 158..242 × 188.1..203.5 ⊂ Box
+    # 100..400 × 100..300): Overlap-Anteil = 100 % der Text-Fläche …
+    # — stattdessen: Kante-Tangenz mit < 50 % Anteil. BBox bei
+    # (200,200) middle: y 188.1..203.5, Box y 200..300 (height 100):
+    # Overlap = 84×3.5 px² ≈ 11 % der Text-Fläche (< 50 %) → sauber.
+    lbl = _free_label("lbl-low", (200, 200), "Tank-Text", "middle")
+    g1 = _group("g1", (100, 200), (300, 100))
+    cols = detect_collisions(
+        [TextElem("lbl-lbl-low", "Tank-Text", 14, 200, 200, "middle")],
+        [], labels=[lbl], groups=[g1],
+    )
+    assert [c.kind for c in cols if c.kind == "group-box-label"] == []
+
+
+def test_group_box_label_bound_ignores_own_box():
+    """R-37: gebundenes Label (comp ∈ g1-Mitglieder) in der EIGENEN
+    Box → KEIN group-box-label (Eigene-Box-Exemption); fremde g2-Box
+    wird weiterhin geprüft (hier keine Überdeckung → sauber)."""
+    p1 = Component.model_validate(
+        {"id": "p1", "type": "pump", "at": [170, 200]}
+    )
+    lbl = Label.model_validate({
+        "id": "lbl-host", "comp": "p1", "text": "Tank-Text",
+        "anchor": "middle",
+    })
+    g1 = _group_members("g1", (100, 100), (300, 200), ["p1"])
+    g2 = _group("g2", (600, 100), (100, 200))
+    t = TextElem("lbl-lbl-host", "Tank-Text", 14, 170, 200, "middle")
+    cols = detect_collisions(
+        [t], [], components=[p1], labels=[lbl], groups=[g1, g2]
+    )
+    assert [c.kind for c in cols if c.kind == "group-box-label"] == []
+
+
+def test_group_box_label_bound_checks_foreign_box():
+    """R-37: gebundenes Label (Host ∈ g1) überlappt die Box von g2
+    (> 50 %) → Kollision mit group-g2."""
+    p1 = Component.model_validate(
+        {"id": "p1", "type": "pump", "at": [170, 200]}
+    )
+    lbl = Label.model_validate({
+        "id": "lbl-fore", "comp": "p1", "text": "Tank-Text",
+        "anchor": "middle",
+    })
+    g1 = _group_members("g1", (100, 100), (300, 200), ["p1"])
+    g2 = _group("g2", (400, 180), (200, 60))
+    # Label-BBox 128..212 × 188.1..203.5 überlappt g2 (400..600)?
+    # NEIN — x-Intervalle disjunkt → stattdessen: Label an g2-Kante.
+    t = TextElem("lbl-lbl-fore", "Tank-Text", 14, 430, 200, "start")
+    cols = detect_collisions(
+        [t], [], components=[p1], labels=[lbl], groups=[g1, g2]
+    )
+    assert [c.kind for c in cols if c.kind == "group-box-label"] == [
+        "group-box-label",
+    ]
+    assert cols[0].elem_b == "group-g2"
+
+
+def test_group_box_label_non_label_text_ignored():
+    """R-37: nur Label-Texte (lbl-*) werden geprüft — Readout-Text
+    (readout-*) in der Box → kein group-box-label."""
+    g1 = _group("g1", (100, 100), (300, 200))
+    t = TextElem("readout-a1.lbl", "Tank-Text", 14, 200, 108, "middle")
+    assert detect_collisions([t], [], labels=[], groups=[g1]) == []
+
+
+def test_group_box_label_no_groups_clean():
+    lbl = _free_label("lbl-x", (200, 108), "Tank-Text")
+    t = TextElem("lbl-lbl-x", "Tank-Text", 14, 200, 108, "start")
+    assert detect_collisions([t], [], labels=[lbl], groups=[]) == []

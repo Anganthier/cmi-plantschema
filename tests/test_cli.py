@@ -108,6 +108,19 @@ def test_render_exit3_new_colliding_fixtures(tmp_path):
         assert out.exists()  # SVG wird geschrieben, dann Gate schlägt
 
 
+def test_check_exit3_s4l3_group_fixtures(tmp_path):
+    """S4-L3 (R-37): beide neuen Negativ-Fixtures → exit 3 + Gate-Code."""
+    r = run_cli("check", "--in",
+                str(fx("colliding-component-foreign-group-box")),
+                cwd=tmp_path)
+    assert r.returncode == 3
+    assert "COMPONENT-IN-FOREIGN-GROUP-BOX" in r.stderr
+    r = run_cli("check", "--in", str(fx("colliding-group-box-label")),
+                cwd=tmp_path)
+    assert r.returncode == 3
+    assert "GROUP-BOX-LABEL" in r.stderr
+
+
 def test_check_exit0_when_clean(tmp_path):
     r = run_cli("check", "--in", str(fx("minimal")), cwd=tmp_path)
     assert r.returncode == 0

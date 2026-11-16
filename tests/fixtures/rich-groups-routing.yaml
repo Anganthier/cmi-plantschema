@@ -1,0 +1,218 @@
+# S4-L3-Positiv-Fixture (R-37): cmi-ähnliche 5-Gruppen-Topologie auf
+# Basis der S4-L2-Fixture (rich-groups-layout.yaml) — inter-gruppige
+# Pipes OHNE `via`, die fremde Gruppen-Boxen kreuzen: DETERMINISTISCHES
+# Kanal-Umleiten (R-37). „Fremd" = weder from- noch to-Gruppe (die
+# EIGENEN Boxen beider Enden zählen nicht — eine Leitung, die in ihre
+# Ziel-Box einläuft, ist normal).
+#
+# - p_solar_puffer (NEU): g_puffer → g_kollektor (puffer.top → coll1.in).
+#   Fallback (horizontal y=390) kreuzt g_kessel → Detour über nächste
+#   Kante (untere Kante y=400, Kanal-Linie y=401):
+#   (720,390) → (720,401) → (229,401) → (229,600).
+# - p_ret_solar (NEU): g_puffer → g_kessel (puffer.bottom → b_wood.top).
+#   Fallback (horizontal y=510) kreuzt g_kollektor → Detour über nächste
+#   Kante (obere Kante y=480, Kanal-Linie y=479):
+#   (720,510) → (720,479) → (334,479) → (334,210).
+# - p_misch_solar (NEU): g_kollektor → g_puffer (coll1.in → puffer.mid-
+#   bottom), KEIN Fremdkreuz → unveränderter Manhattan-Fallback:
+#   (229,600) → (720,600) → (720,470).
+# - p_solar2 / p_pump (aus der S4-L2-Fixture, ohne `via`): kreuzen NUR
+#   die EIGENE Ziel-Box (g_puffer bzw. g_warmepumpe) → kein Detour,
+#   Fallback bleibt unverändert (Intra-/Eigene-Box-Prüfung: R-37).
+# - Intra-gruppige Pipes (p_gas, p_misch, p_valve, p_throttle, p_loop1/2):
+#   wie heute (via + orthogonal), kein Detour.
+# - via-Routen (p_boil1, p_boil2, p_solar, p_rad, p_ret): Autor-Override
+#   gewinnt immer über den Detour (R-37), unverändert.
+#
+# Engine-Layout (R-36; Canvas 1400×900):
+#   g_kessel      60..440   × 80..400    → hub b_oil (250,240),
+#                                          chim (166,240), b_wood (334,240)
+#   g_kollektor   60..480   × 480..720   → hub coll1 (270,600),
+#                                          coll2 (178,600)
+#   g_puffer      540..900  × 300..600   → hub puffer (720,450),
+#                                          mix1 (641,450), mix2 (799,450)
+#   g_heizkreis   980..1340 × 80..380    → hub rad1 (1160,230),
+#                                          rad2 (1081,230), rad3 (1239,230)
+#   g_warmepumpe  980..1340 × 480..720   → hub pum1 (1160,600),
+#                                          val1 (1081,600), th1 (1239,600)
+# (via-Routen: Manhattan-Fallback würde durch Symbole/Texte laufen.)
+schema: plantschema/v1
+canvas: { width: 1400, height: 900, background: "#0b1220" }
+
+components:
+  # --- Puffer-Gruppe (hub-Zentrum) ---
+  - id: puffer
+    type: tank-buffer
+    label: { text: "Puffer P", sub: "1000 L" }
+  - id: mix1
+    type: mixing
+    label: { text: "M1" }
+  - id: mix2
+    type: mixing
+    label: { text: "M2" }
+  # --- Kessel-Gruppe ---
+  - id: b_oil
+    type: boiler-oil
+    label: { text: "H2 · Öl" }
+  - id: b_wood
+    type: boiler-solid
+    label: { text: "B2 · Holz" }
+  - id: chim
+    type: chimney
+    label: { text: "Kamin" }
+  # --- Kollektor-Gruppe ---
+  - id: coll1
+    type: collector-solar
+    label: { text: "K1" }
+  - id: coll2
+    type: collector-solar
+    label: { text: "K2" }
+  # --- Heizkreis-Gruppe ---
+  - id: rad1
+    type: radiator
+    label: { text: "R1" }
+  - id: rad2
+    type: radiator
+    label: { text: "R2" }
+  - id: rad3
+    type: radiator
+    label: { text: "R3" }
+  # --- Wärmetauscher-Gruppe ---
+  - id: pum1
+    type: pump
+    label: { text: "P1" }
+  - id: val1
+    type: valve-2way
+    label: { text: "V1" }
+  - id: th1
+    type: throttle
+    label: { text: "T1" }
+
+groups:
+  - id: g_puffer
+    label: "Puffer"
+    members: [puffer, mix1, mix2]
+    hub: puffer
+    at: [540, 300]
+    size: [360, 300]
+  - id: g_kessel
+    label: "Kessel"
+    members: [b_oil, b_wood, chim]
+    hub: b_oil
+    at: [60, 80]
+    size: [380, 320]
+  - id: g_kollektor
+    label: "Kollektor"
+    members: [coll1, coll2]
+    hub: coll1
+    at: [60, 480]
+    size: [420, 240]
+  - id: g_heizkreis
+    label: "Heizkreis"
+    members: [rad1, rad2, rad3]
+    hub: rad1
+    at: [980, 80]
+    size: [360, 300]
+  - id: g_warmepumpe
+    label: "Wärmepumpe"
+    members: [pum1, val1, th1]
+    hub: pum1
+    at: [980, 480]
+    size: [360, 240]
+
+pipes:
+  # Vorlauf: Öl-/Holzkessel → Puffer, Abgas: Öl-Kessel → Kamin.
+  - id: p_boil1
+    from: { comp: b_oil, port: right }
+    to: { comp: puffer, port: left }
+    kind: vl
+    via: [[278, 300], [680, 300], [680, 450]]
+  - id: p_boil2
+    from: { comp: b_wood, port: right }
+    to: { comp: puffer, port: mid-bottom }
+    kind: vl
+    via: [[362, 470], [720, 470]]
+  - id: p_gas
+    from: { comp: b_oil, port: top }
+    to: { comp: chim, port: left }
+    kind: gas
+  # Solar: Kollektoren → Mischventile → Puffer/Pumpe.
+  - id: p_solar
+    from: { comp: coll1, port: out }
+    to: { comp: mix1, port: in }
+    kind: vl
+    via: [[311, 660], [627, 660]]
+  - id: p_solar2
+    from: { comp: coll2, port: out }
+    to: { comp: mix2, port: in }
+    kind: vl
+  # R-37-Demo (NEU): inter-gruppig, ohne `via`, Fremdkreuzung → Detour.
+  - id: p_solar_puffer
+    from: { comp: puffer, port: top }
+    to: { comp: coll1, port: in }
+    kind: vl
+  - id: p_misch_solar
+    from: { comp: coll1, port: in }
+    to: { comp: puffer, port: mid-bottom }
+    kind: vl
+  - id: p_ret_solar
+    from: { comp: puffer, port: bottom }
+    to: { comp: b_wood, port: top }
+    kind: vl
+  - id: p_misch
+    from: { comp: mix1, port: out }
+    to: { comp: puffer, port: mid-top }
+    kind: vl
+  - id: p_pump
+    from: { comp: mix2, port: out }
+    to: { comp: pum1, port: in }
+    kind: vl
+  # Kreislauf: Pumpe → Ventil → Drossel → Heizkreise → Rücklauf.
+  - id: p_valve
+    from: { comp: pum1, port: out }
+    to: { comp: val1, port: in }
+    kind: vl
+  - id: p_throttle
+    from: { comp: val1, port: out }
+    to: { comp: th1, port: in }
+    kind: vl
+  - id: p_rad
+    from: { comp: th1, port: out }
+    to: { comp: rad1, port: in }
+    kind: vl
+    via: [[1259, 420], [1130, 420]]
+  - id: p_loop1
+    from: { comp: rad1, port: out }
+    to: { comp: rad2, port: in }
+    kind: rl
+  - id: p_loop2
+    from: { comp: rad2, port: out }
+    to: { comp: rad3, port: in }
+    kind: rl
+  - id: p_ret
+    from: { comp: rad3, port: out }
+    to: { comp: puffer, port: bottom }
+    kind: rl
+    via: [[1300, 230], [1300, 700], [720, 700]]
+
+readouts:
+  - id: a6_vl
+    at: { comp: puffer, port: bottom }
+    label: "a6 VL"
+    value_key: vl
+  - id: t_solar
+    at: { comp: mix1, port: top }
+    label: "t SOL"
+    value_key: t_solar
+    side: left
+  - id: p_val
+    at: { comp: val1, port: stem }
+    label: "p VAL"
+    value_key: p_val
+    side: left
+
+labels:
+  - id: legende
+    at: [40, 880]
+    text: "S4-L3: gruppen-awarees Routing (R-37) — 5 Gruppen, 14 Komponenten, 16 Pipes"
+    anchor: start
