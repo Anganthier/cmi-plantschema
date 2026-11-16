@@ -1,0 +1,169 @@
+# S4-L5b Ladder L12 — Lanes (R-39) + Junctions (R-40), Stufe 3 (Stress):
+# 2 composites (c_left = {g_1, g_2}, c_right = {g_3, g_4}), 4 atomare
+# Gruppen, 3 Lanes, 2 junctions, 13 Pipes, 2 Labels.
+# - lane_mid (vertikal, 120×560) zwischen den composites: 5 Pipes über
+#   die composite-Grenze (Spuren x = 540 … 580). p_m4 ist degeneriert
+#   (Ports auf gleicher Höhe, kein Lauf entlang der Lane-Achse) →
+#   R-37/Manhattan-Fallback; die Gerade kreuzt die Lane-Box → keine
+#   Warnung, kein LANE-PIPE-Treffer.
+# - lane_l (horizontal, 400×40) in c_left zwischen g_1 und g_2: 3 Pipes
+#   (Spuren y = 320 / 330 / 340).
+# - lane_r (horizontal, 400×12) in c_right: ENGE Box — 3 Pipes passen
+#   nicht mit 10 px → Spurabstand 5 px (y = 311 / 316 / 321) +
+#   ERWARTETE Lane-Fallback-Warnung (Exit bleibt 0).
+# - j_1 (in g_1): Verteiler (1 ein, 2 aus); j_2 (in g_4): Sammler
+#   (2 ein, 1 aus). Nicht-Lane-Pipes: p_j1_in, p_j2_out (intra-Gruppe).
+schema: plantschema/v1
+canvas: { width: 1120, height: 640, background: "#0b1220" }
+
+components:
+  - id: t1
+    type: tank-buffer
+    at: [140, 190]
+  - id: p1
+    type: pump
+    at: [260, 110]
+  - id: j_1
+    type: junction
+    at: [400, 190]
+  - id: b2
+    type: boiler-solid
+    at: [140, 460]
+  - id: p2
+    type: pump
+    at: [300, 520]
+  - id: m2
+    type: mixing
+    at: [380, 430]
+  - id: r3
+    type: radiator
+    at: [760, 120]
+  - id: h3
+    type: heatex-plate
+    at: [900, 200]
+  - id: v3
+    type: valve-3way
+    at: [1000, 120]
+  - id: j_2
+    type: junction
+    at: [720, 470]
+  - id: c4
+    type: collector-solar
+    at: [900, 520]
+  - id: p4
+    type: pump
+    at: [900, 420]
+  - id: v4
+    type: valve-2way
+    at: [1000, 420]
+
+groups:
+  - id: c_left
+    kind: composite
+    label: "Erzeugung"
+    includes: [g_1, g_2]
+    at: [40, 40]
+    size: [440, 560]
+  - id: c_right
+    kind: composite
+    label: "Verbrauch"
+    includes: [g_3, g_4]
+    at: [640, 40]
+    size: [440, 560]
+  - id: g_1
+    label: "Speicher"
+    members: [t1, p1, j_1]
+    at: [60, 80]
+    size: [400, 220]
+  - id: g_2
+    label: "Kessel"
+    members: [b2, p2, m2]
+    at: [60, 360]
+    size: [400, 220]
+  - id: g_3
+    label: "Heizung"
+    members: [r3, h3, v3]
+    at: [660, 80]
+    size: [400, 220]
+  - id: g_4
+    label: "Solar"
+    members: [j_2, c4, p4, v4]
+    at: [660, 360]
+    size: [400, 220]
+
+lanes:
+  - id: lane_mid
+    label: "Trasse"
+    at: [500, 40]
+    size: [120, 560]
+    pipes: [p_m2, p_m1, p_m3, p_m5, p_m4]
+  - id: lane_l
+    at: [60, 310]
+    size: [400, 40]
+    pipes: [p_l2, p_l1, p_l3]
+  - id: lane_r
+    at: [660, 310]
+    size: [400, 12]
+    pipes: [p_r3, p_r1, p_r2]
+
+pipes:
+  - id: p_j1_in
+    from: { comp: t1, port: right }
+    to: { comp: j_1, port: left }
+    kind: vl
+  - id: p_m1
+    from: { comp: j_1, port: right }
+    to: { comp: r3, port: in }
+    kind: vl
+  - id: p_m2
+    from: { comp: p1, port: out }
+    to: { comp: h3, port: in }
+    kind: vl
+  - id: p_m3
+    from: { comp: m2, port: out }
+    to: { comp: j_2, port: left }
+    kind: rl
+  - id: p_m4
+    from: { comp: p2, port: out }
+    to: { comp: c4, port: in }
+    kind: rl
+  - id: p_m5
+    from: { comp: p4, port: in }
+    to: { comp: b2, port: right }
+    kind: rl
+  - id: p_l1
+    from: { comp: t1, port: bottom }
+    to: { comp: p2, port: in }
+    kind: rl
+  - id: p_l2
+    from: { comp: j_1, port: bottom }
+    to: { comp: m2, port: top }
+    kind: vl
+  - id: p_l3
+    from: { comp: p1, port: in }
+    to: { comp: b2, port: left }
+    kind: ctl
+  - id: p_r1
+    from: { comp: h3, port: bottom }
+    to: { comp: p4, port: out }
+    kind: rl
+  - id: p_r2
+    from: { comp: v3, port: mix }
+    to: { comp: c4, port: out }
+    kind: vl
+  - id: p_r3
+    from: { comp: r3, port: out }
+    to: { comp: j_2, port: top }
+    kind: rl
+  - id: p_j2_out
+    from: { comp: j_2, port: right }
+    to: { comp: v4, port: in }
+    kind: rl
+
+labels:
+  - id: kollektor
+    comp: c4
+    text: "Kollektor"
+  - id: holz
+    comp: b2
+    text: "Holzkessel"

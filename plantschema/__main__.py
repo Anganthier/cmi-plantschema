@@ -18,6 +18,7 @@ from pathlib import Path
 from . import __version__
 from .emit import compute_layout, render
 from .io import SchemaLoadError, load_schema
+from .lanes import collect_lane_warnings, lane_exempt_ids
 from .layout import resolve
 from .model import SchemaError
 from .place import collect_slot_warnings
@@ -74,19 +75,27 @@ def _run_gate(schema, no_gate: bool) -> int:
     pipes, _readout_pos = compute_layout(schema)
     texts = texts_for_schema(schema)
     warnings = collect_slot_warnings(schema)
-    if warnings:
-        sys.stderr.write(f"{len(warnings)} Warnung(en):\n")
+    lane_warnings = collect_lane_warnings(schema)
+    if warnings or lane_warnings:
+        sys.stderr.write(
+            f"{len(warnings) + len(lane_warnings)} Warnung(en):\n"
+        )
         for w in warnings:
             sys.stderr.write(
                 f"  SLOT-FALLBACK  [{w.elem_id}] @ comp-{w.comp_id} "
                 f"({w.direction}) — {w.note}\n"
             )
+        for lw in lane_warnings:
+            sys.stderr.write("  " + lw.line() + "\n")
     collisions = detect_collisions(
         texts, pipes,
         components=schema.components,
         readouts=schema.readouts,
         labels=schema.labels,
         groups=schema.groups,
+        lanes=schema.lanes,
+        lane_exempt=lane_exempt_ids(schema),
+        hidden_kinds=schema.hidden_kind_values,
     )
     if collisions:
         sys.stderr.write(f"{len(collisions)} Kollision(en):\n")

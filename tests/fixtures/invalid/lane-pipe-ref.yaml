@@ -1,0 +1,24 @@
+# S4-L5b (R-39): Lane referenziert eine nicht existente Pipe → exit 2
+# (`lane-pipe-ref`).
+schema: plantschema/v1
+canvas: { width: 600, height: 400 }
+
+components:
+  - id: p1
+    type: pump
+    at: [100, 100]
+  - id: h1
+    type: radiator
+    at: [450, 300]
+
+pipes:
+  - id: p_a
+    from: { comp: p1, port: out }
+    to: { comp: h1, port: in }
+    kind: vl
+
+lanes:
+  - id: lane_a
+    at: [60, 180]
+    size: [480, 40]
+    pipes: [p_a, p_ghost]

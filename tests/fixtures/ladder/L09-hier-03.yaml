@@ -1,0 +1,158 @@
+# S4-L5a Ladder L09 — Nested Groups (R-38), Stufe 3 (Stress):
+# 3 composites, 6 atomare Gruppen, geteilte Kinder, 10 Pipes, 4 Labels.
+# - c_wood = {g_wood, g_buf}, c_solar = {g_buf, g_solar},
+#   c_house = {g_buf, g_heat, g_ww}: g_buf ist das geteilte Kind ALLER
+#   drei composites (Venn-Zentrum oben Mitte); g_mix ist atomar ohne
+#   composite-Eltern (unten links).
+# - Detours (R-37 mit transitiver Semantik):
+#   * p_buf_mix (g_buf → g_mix): g_wood ist fremd → Kanal unter g_wood
+#     (y = 401).
+#   * p_wood_solar_ctl (g_wood → g_solar): c_house ist fremd (kein
+#     gemeinsamer composite) → Kanal über c_house (y = 79).
+# - Pipes im gemeinsamen composite (p_heat_ww, p_wood_vl, p_solar_vl):
+#   kein Detour; p_mix_heat / p_ww_solar: inter-gruppig ohne
+#   Fremdkreuzung (kein Detour).
+# - 4 gebundene Labels in composites (eigene Box(en) = transitive
+#   Mitgliedschaft des Hosts → kein GROUP-BOX×LABEL).
+# composites stehen vor den atomaren Gruppen (Box-Reihenfolge der
+# Kanal-Prüfung: c_house wird vor g_buf als erste Fremdkreuzung erkannt).
+schema: plantschema/v1
+canvas: { width: 1260, height: 860, background: "#0b1220" }
+
+components:
+  - id: boiler_w
+    type: boiler-solid
+    at: [180, 250]
+  - id: pump_w
+    type: pump
+    at: [300, 330]
+  - id: tank1
+    type: tank-buffer
+    at: [630, 250]
+  - id: coll1
+    type: collector-solar
+    at: [1030, 250]
+  - id: pump_s
+    type: pump
+    at: [1030, 340]
+  - id: valve_s
+    type: valve-2way
+    at: [1100, 170]
+  - id: mix1
+    type: mixing
+    at: [230, 620]
+  - id: pump_m
+    type: pump
+    at: [330, 720]
+  - id: heat1
+    type: radiator
+    at: [550, 620]
+  - id: hx1
+    type: heatex-plate
+    at: [710, 620]
+
+groups:
+  - id: c_wood
+    kind: composite
+    label: "Holz-Eltern"
+    includes: [g_wood, g_buf]
+    at: [60, 40]
+    size: [740, 380]
+  - id: c_solar
+    kind: composite
+    label: "Solar-Eltern"
+    includes: [g_buf, g_solar]
+    at: [460, 60]
+    size: [740, 370]
+  - id: c_house
+    kind: composite
+    label: "Haus"
+    includes: [g_buf, g_heat, g_ww]
+    at: [465, 80]
+    size: [330, 735]
+  - id: g_wood
+    label: "Holz"
+    members: [boiler_w, pump_w]
+    at: [80, 110]
+    size: [300, 290]
+  - id: g_buf
+    label: "Puffer"
+    members: [tank1]
+    at: [480, 110]
+    size: [300, 290]
+  - id: g_solar
+    label: "Solar"
+    members: [coll1, pump_s, valve_s]
+    at: [880, 110]
+    size: [300, 290]
+  - id: g_mix
+    label: "Mischer"
+    members: [mix1, pump_m]
+    at: [80, 520]
+    size: [300, 280]
+  - id: g_heat
+    label: "HK"
+    members: [heat1]
+    at: [480, 520]
+    size: [140, 280]
+  - id: g_ww
+    label: "WW"
+    members: [hx1]
+    at: [640, 520]
+    size: [140, 280]
+
+pipes:
+  - id: p_wood_vl
+    from: { comp: boiler_w, port: right }
+    to: { comp: tank1, port: left }
+    kind: vl
+  - id: p_wood_rl
+    from: { comp: pump_w, port: in }
+    to: { comp: boiler_w, port: bottom }
+    kind: rl
+  - id: p_solar_vl
+    from: { comp: coll1, port: in }
+    to: { comp: tank1, port: right }
+    kind: vl
+  - id: p_solar_rl
+    from: { comp: pump_s, port: out }
+    to: { comp: coll1, port: out }
+    kind: rl
+  - id: p_buf_mix
+    from: { comp: tank1, port: bottom }
+    to: { comp: mix1, port: in }
+    kind: vl
+  - id: p_mix_pump
+    from: { comp: mix1, port: out }
+    to: { comp: pump_m, port: in }
+    kind: vl
+  - id: p_mix_heat
+    from: { comp: pump_m, port: out }
+    to: { comp: heat1, port: in }
+    kind: vl
+  - id: p_heat_ww
+    from: { comp: heat1, port: out }
+    to: { comp: hx1, port: in }
+    kind: rl
+  - id: p_ww_solar
+    from: { comp: hx1, port: out }
+    to: { comp: pump_s, port: in }
+    kind: rl
+  - id: p_wood_solar_ctl
+    from: { comp: pump_w, port: out }
+    to: { comp: valve_s, port: in }
+    kind: ctl
+
+labels:
+  - id: puffer
+    comp: tank1
+    text: "Puffer 1500 L"
+  - id: kollektor
+    comp: coll1
+    text: "Kollektor"
+  - id: hk
+    comp: heat1
+    text: "HK1"
+  - id: holz
+    comp: boiler_w
+    text: "Holzkessel"

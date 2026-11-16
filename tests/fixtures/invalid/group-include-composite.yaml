@@ -1,0 +1,25 @@
+# S4-L5a-Negativ-Fixture (R-38): composite inkludiert composite
+# (Tiefe max. 1 verletzt) → validate exit 2 (`group-include-composite`).
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+
+components:
+  - id: p1
+    type: pump
+    at: [150, 200]
+
+groups:
+  - id: c_outer
+    kind: composite
+    includes: [c_inner]
+    at: [20, 20]
+    size: [740, 440]
+  - id: c_inner
+    kind: composite
+    includes: [g1]
+    at: [40, 40]
+    size: [700, 400]
+  - id: g1
+    members: [p1]
+    at: [60, 80]
+    size: [260, 300]

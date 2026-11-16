@@ -1,0 +1,25 @@
+# S4-L5b (R-39): Pipe in lane.pipes, deren `via`-Route (Override gewinnt)
+# an der Lane-Box vorbeiläuft → exit 3 (Gate LANE-PIPE).
+schema: plantschema/v1
+canvas: { width: 600, height: 400 }
+
+components:
+  - id: p1
+    type: pump
+    at: [100, 100]
+  - id: h1
+    type: radiator
+    at: [450, 100]
+
+pipes:
+  - id: p_a
+    from: { comp: p1, port: out }
+    to: { comp: h1, port: in }
+    kind: vl
+    via: [[120, 60], [420, 60], [420, 100]]
+
+lanes:
+  - id: lane_a
+    at: [60, 250]
+    size: [480, 40]
+    pipes: [p_a]

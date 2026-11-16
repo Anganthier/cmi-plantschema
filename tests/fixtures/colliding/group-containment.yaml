@@ -1,0 +1,30 @@
+# S4-L5a-Negativ-Fixture (R-38): composite-Box c1 (40..440) enthält die
+# Kind-Box g2 (360..620) NICHT strikt (Überstand rechts 180 px) →
+# Gate exit 3 (GROUP-CONTAINMENT `group-c1` × `group-g2`). Schema
+# valide; Komponenten liegen in ihren eigenen Boxen und außerhalb der
+# fremden; g1 liegt vollständig in c1.
+schema: plantschema/v1
+canvas: { width: 800, height: 460, background: "#0b1220" }
+
+components:
+  - id: p1
+    type: pump
+    at: [150, 230]
+  - id: t1
+    type: tank-buffer
+    at: [530, 230]
+
+groups:
+  - id: c1
+    kind: composite
+    includes: [g1, g2]
+    at: [40, 40]
+    size: [400, 360]
+  - id: g1
+    members: [p1]
+    at: [60, 80]
+    size: [260, 300]
+  - id: g2
+    members: [t1]
+    at: [360, 80]
+    size: [260, 300]

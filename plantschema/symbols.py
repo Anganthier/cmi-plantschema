@@ -40,6 +40,7 @@ __all__ = [
     "known_types",
     "port_names",
     "port_offset",
+    "port_stubs",
     "symbol_id",
     "symbol_bounds",
     "component_bounds",
@@ -263,6 +264,25 @@ _PID_SYMBOLS: tuple[tuple[str, str], ...] = (
     ),
 )
 
+#: Erweiterungs-Symbole (S4-L5b, R-40): NICHT aus dem cmi-Seed. Gleiches
+#: (svg-id, markup)-Muster wie `_PID_SYMBOLS`; im `<defs>` nur emittiert,
+#: wenn das Schema den Typ nutzt (`render_defs(used_types)`) — Byte-
+#: Stabilität aller bestehenden Schemas.
+#: `pid-junction` = gefüllter Kreis Radius 6: Kreis r=3 mit Strich-
+#: breite 6 (Standard-`.pid`-Stil, Strich-Farbe = Füllung; kein
+#: Fill-Farb-Change, `.pid` setzt `fill:none`).
+_EXT_SYMBOLS: tuple[tuple[str, str, str], ...] = (
+    # (Typ, symbol-id, <g>-Inhalt)
+    (
+        "junction",
+        "pid-junction",
+        """
+<g id="pid-junction">
+  <circle class="pid" r="3" style="stroke-width:6"/>
+</g>""",
+    ),
+)
+
 #: Marker `<arrow>` (S1-Kompatibilität; S2: Pipes nutzen stattdessen
 #: `.pipe-arrow`-Endpunkte, s. R-29 — der Marker bleibt im <defs>).
 _ARROW_MARKER = (
@@ -274,14 +294,19 @@ _ARROW_MARKER = (
 )
 
 
-def render_defs() -> str:
-    """Kompletter `<defs>`-Inhalt: Marker + alle 18 P&ID-Symbole.
+def render_defs(used_types: frozenset[str] | set[str] = frozenset()) -> str:
+    """Kompletter `<defs>`-Inhalt: Marker + alle 18 P&ID-Symbole
+    (+ Erweiterungs-Symbole aus `_EXT_SYMBOLS`, nur wenn ihr Typ in
+    `used_types` steht, S4-L5b, R-40).
 
     Deterministisch: feste Katalog-Reihenfolge, keine Iteration über
     unsortierte Sammlungen (R-24).
     """
     parts: list[str] = [_ARROW_MARKER]
     parts.extend(body.strip() for _, body in _PID_SYMBOLS)
+    parts.extend(
+        body.strip() for typ, _, body in _EXT_SYMBOLS if typ in used_types
+    )
     return "\n".join(parts)
 
 
@@ -393,6 +418,13 @@ COMPONENT_PORTS: dict[str, tuple[PortGeometry, ...]] = {
     # Readout-Hosts ohne Pipe-Port (nur {x,y}-Referenz, s. R-13).
     "pt": (),
     "flow-switch": (),
+    # S4-L5b (R-40): Knoten-Symbol, Kanten-Mitte des Kreises (r = 6).
+    "junction": _ports(
+        ("left", -6, 0, "left"),
+        ("right", 6, 0, "right"),
+        ("top", 0, -6, "up"),
+        ("bottom", 0, 6, "down"),
+    ),
 }
 
 #: Typen mit Pipe-Porten (Readout-Hosts wie `pt` dürfen keine Pipes tragen).
@@ -421,6 +453,7 @@ _TYPE_TO_SYMBOL: dict[str, str] = {
     "chimney": "pid-chimney",
     "pt": "pid-pt",
     "flow-switch": "pid-flow-switch",
+    "junction": "pid-junction",
 }
 
 #: Alias-Geometrie: Typ ohne eigene Ports nutzt die Geometrie des Basis-Typs.
@@ -450,6 +483,7 @@ LABEL_OFFSET: dict[str, int] = {
     "chimney": 52,
     "pt": 20,
     "flow-switch": 20,
+    "junction": 18,
 }
 
 _DEFAULT_LABEL_OFFSET: int = 32
@@ -486,6 +520,7 @@ SYMBOL_BOUNDS: dict[str, tuple[int, int, int, int]] = {
     "chimney": (-14, -40, 18, 34),
     "pt": (-8, -8, 8, 16),
     "flow-switch": (-8, -8, 8, 16),
+    "junction": (-6, -6, 6, 6),
 }
 
 #: BBox des S1-Platzhalter-Rects (unbekannter Typ), lokal um (0,0).
@@ -558,6 +593,35 @@ def port_offset(comp_type: str, port: str) -> PortGeometry:
         if p.name == port:
             return p
     raise KeyError(f"{comp_type} hat keinen Port {port!r}")
+
+
+def port_stubs(
+    comp_type: str,
+) -> tuple[tuple[str, tuple[int, int], tuple[int, int]], ...]:
+    """Stutzen-Katalog (S4-L5c): Ports, die STRIKT im BBox-Inneren liegen
+    → `(port, Kantenpunkt, Portpunkt)` lokal um (0,0), Port-Reihenfolge.
+
+    Kantenpunkt = BBox-Kante auf der Port-Achse (up/down: x = Port-x am
+    oberen/unteren Rand; left/right: y = Port-y an linker/rechter Kante).
+    Ports auf der BBox-Kante (z. B. junction) und Typen ohne BBox/Ports
+    liefern nichts. Alias-aware.
+    """
+    base = _base_type(comp_type)
+    bounds = SYMBOL_BOUNDS.get(base)
+    if bounds is None:
+        return ()
+    x0, y0, x1, y1 = bounds
+    out: list[tuple[str, tuple[int, int], tuple[int, int]]] = []
+    for p in COMPONENT_PORTS.get(base, ()):
+        if not (x0 < p.dx < x1 and y0 < p.dy < y1):
+            continue
+        edge = {
+            "up": (p.dx, y0), "down": (p.dx, y1),
+            "left": (x0, p.dy), "right": (x1, p.dy),
+        }.get(p.axis or "")
+        if edge is not None:
+            out.append((p.name, edge, (p.dx, p.dy)))
+    return tuple(out)
 
 
 def symbol_id(comp_type: str) -> str:

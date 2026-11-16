@@ -1,0 +1,77 @@
+# S4-L5c Ladder L13 — hidden_kinds (SVG-Display-Option), Stufe 1:
+# 2 atomare Gruppen, 2 Lanes, 4 Pipes (2× vl in Lanes, 2× ctl), 1 Label.
+# - hidden_kinds: [ctl] → beide ctl-Pipes (Stellsignale an den Stems)
+#   bleiben im Modell (validiert), werden aber NICHT gezeichnet und
+#   zählen nicht als Hindernis (Slots/Gates).
+# - lbl_sig liegt auf der ctl-Leitung p_c1 (y = 240): ohne hidden_kinds
+#   wäre das eine LINE-TEXT-Kollision (exit 3), mit [ctl] → exit 0.
+# - Stutzen: va/tb/vc-Stems sind nur über ctl verbunden → KEIN Stutzen
+#   (ausgeblendete Pipes zählen nicht als Verbindung).
+schema: plantschema/v1
+canvas: { width: 1000, height: 500, background: "#0b1220" }
+hidden_kinds: [ctl]
+
+components:
+  - id: pa
+    type: pump
+    at: [140, 140]
+  - id: va
+    type: valve-actuator
+    at: [280, 260]
+  - id: vc
+    type: valve-globe
+    at: [140, 260]
+  - id: rb
+    type: radiator
+    at: [720, 140]
+  - id: tb
+    type: throttle
+    at: [860, 260]
+
+groups:
+  - id: g_a
+    label: "Erzeuger"
+    members: [pa, va, vc]
+    at: [60, 60]
+    size: [300, 280]
+  - id: g_b
+    label: "Verbraucher"
+    members: [rb, tb]
+    at: [640, 60]
+    size: [300, 280]
+
+lanes:
+  - id: lane_v
+    label: "Steig"
+    at: [420, 60]
+    size: [160, 280]
+    pipes: [p_v1]
+  - id: lane_h
+    label: "Sammel"
+    frame: false
+    at: [60, 380]
+    size: [880, 60]
+    pipes: [p_v2]
+
+labels:
+  - id: lbl_sig
+    at: [590, 245]
+    text: "Signal"
+
+pipes:
+  - id: p_v1
+    from: { comp: pa, port: out }
+    to: { comp: rb, port: in }
+    kind: vl
+  - id: p_v2
+    from: { comp: va, port: out }
+    to: { comp: tb, port: in }
+    kind: vl
+  - id: p_c1
+    from: { comp: va, port: stem }
+    to: { comp: tb, port: stem }
+    kind: ctl
+  - id: p_c2
+    from: { comp: vc, port: stem }
+    to: { comp: va, port: stem }
+    kind: ctl

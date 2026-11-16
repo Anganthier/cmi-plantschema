@@ -1,0 +1,116 @@
+# S4-L5b Ladder L11 — Lanes (R-39) + Junction (R-40), Stufe 2:
+# 3 atomare Gruppen, 2 Lanes (je 4 Pipes), 1 Pipe außerhalb der Lanes,
+# 1 junction (2 eingehend + 1 ausgehend = sichtbarer Sammler), 2 Labels.
+# - lane_v (vertikal, 60×240) zwischen g_a und g_b: Spuren x = 385 …
+#   415 (Reihenfolge p_v4, p_v3, p_v2, p_v1).
+# - lane_h (horizontal, 940×80) unter der Gruppen-Reihe: Spuren
+#   y = 355 … 385.
+# - j1 (junction, ohne Gruppe): p_v4 kommt von rechts, p_h1 von oben,
+#   p_j_out (einzige Nicht-Lane-Pipe, R-37-Pfad unverändert:
+#   Manhattan-Fallback, kein Detour, da j1 ungruppiert) geht links ab.
+# - Labels: 1 frei (`at`), 1 komponenten-gestützt (Auto-Slot).
+schema: plantschema/v1
+canvas: { width: 1080, height: 600, background: "#0b1220" }
+
+components:
+  - id: ta
+    type: tank-buffer
+    at: [190, 180]
+  - id: pa
+    type: pump
+    at: [310, 100]
+  - id: va
+    type: valve-2way
+    at: [140, 280]
+  - id: bo
+    type: boiler-oil
+    at: [520, 170]
+  - id: pb
+    type: pump
+    at: [630, 250]
+  - id: vb
+    type: valve-3way
+    at: [600, 90]
+  - id: rc
+    type: radiator
+    at: [880, 110]
+  - id: hc
+    type: heatex-plate
+    at: [940, 230]
+  - id: j1
+    type: junction
+    at: [300, 500]
+
+groups:
+  - id: g_a
+    label: "Speicher"
+    members: [ta, pa, va]
+    at: [100, 60]
+    size: [260, 240]
+  - id: g_b
+    label: "Kessel"
+    members: [bo, pb, vb]
+    at: [440, 60]
+    size: [260, 240]
+  - id: g_c
+    label: "Verbraucher"
+    members: [rc, hc]
+    at: [780, 60]
+    size: [260, 240]
+
+lanes:
+  - id: lane_v
+    at: [370, 60]
+    size: [60, 240]
+    pipes: [p_v4, p_v3, p_v2, p_v1]
+  - id: lane_h
+    label: "Sammelschiene"
+    at: [100, 330]
+    size: [940, 80]
+    pipes: [p_h1, p_h2, p_h3, p_h4]
+
+pipes:
+  - id: p_v1
+    from: { comp: pa, port: out }
+    to: { comp: bo, port: left }
+    kind: vl
+  - id: p_v2
+    from: { comp: ta, port: right }
+    to: { comp: pb, port: in }
+    kind: vl
+  - id: p_v3
+    from: { comp: va, port: out }
+    to: { comp: vb, port: in }
+    kind: vl
+  - id: p_v4
+    from: { comp: ta, port: bottom }
+    to: { comp: j1, port: right }
+    kind: rl
+  - id: p_h1
+    from: { comp: hc, port: bottom }
+    to: { comp: j1, port: top }
+    kind: rl
+  - id: p_h2
+    from: { comp: bo, port: bottom }
+    to: { comp: rc, port: in }
+    kind: vl
+  - id: p_h3
+    from: { comp: vb, port: mix }
+    to: { comp: hc, port: in }
+    kind: vl
+  - id: p_h4
+    from: { comp: pb, port: out }
+    to: { comp: pa, port: in }
+    kind: rl
+  - id: p_j_out
+    from: { comp: j1, port: left }
+    to: { comp: va, port: in }
+    kind: rl
+
+labels:
+  - id: verteiler
+    at: [320, 540]
+    text: "Sammler"
+  - id: puffer
+    comp: ta
+    text: "Puffer"

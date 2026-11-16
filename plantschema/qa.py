@@ -36,6 +36,22 @@ Geprüft (cmi-`svg_layout_check.py`-Kanon, Bounding-Box-Heuristik):
   Schwelle wie die bestehenden Box-Checks) → Kollision; ein gebundenes
   Label ignoriert die EIGENE Gruppen-Box des Hosts, prüft aber alle
   fremden. (GROUP-BOX×LABEL war R-35-Ankündigung, in S4-L3 gelandet.)
+- **Nested Groups** (S4-L5a, R-38, `groups.py`): alle Gruppen-Gates
+  nutzen die TRANSITIVE Mitgliedschaft (eigene atomare Gruppe + alle
+  composite-Ahnen). GROUP-BOX bleibt strikt (> 50 %) mit Ausnahmen:
+  (a) zwei atomare Boxen mit gemeinsamem composite-Elternteil (Venn),
+  (b) zwei composite-Boxen mit ≥ 1 gemeinsamem Kind, (c) composite ×
+  eigenes Kind (Containment = eigenes Gate). **GROUP-CONTAINMENT**
+  (`group-containment`): Kind-Box ragt aus der composite-Box heraus
+  (> 0 px) → Kollision.
+- **LANE-BOX** (`lane-box`, S4-L5b, R-39): zwei Lane-Boxen überlappen
+  > 50 % der kleineren Box-Fläche (gleiche Methodik wie GROUP-BOX).
+- **LANE-PIPE** (`lane-pipe`, S4-L5b, R-39): Pipe in `lane.pipes`, deren
+  Route KEIN Segment in der Lane-Box hat (Kanten-Berührung ≤ 2 px
+  zählt als innerhalb). Degenerierte Lane-Pipes (R-37-Fallback,
+  `lane_exempt`) sind ausgenommen — sie liefern eine Lane-Warnung.
+  Lanes sind KEINE Gruppen: kein Einfluss auf die Gruppen-Gates;
+  Komponenten dürfen in Lane-Boxen liegen.
 
 Kanon: `WIDTH_FACTOR=0.52`, `HEIGHT_FACTOR=1.2`, Sampling 5 px
 (cmi `sample_segment`); `text-anchor`-Korrektur in der BBox
@@ -52,7 +68,15 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from .model import Component, Group, Label, Readout, Schema
+from .groups import (
+    ancestor_indices,
+    child_indices,
+    is_composite,
+    membership,
+    owner_index,
+)
+from .lanes import lane_box, route_in_box
+from .model import Component, Group, Label, Lane, Readout, Schema
 from .place import TXT_FONT, _text_bbox
 from .route import PipeGeometry
 from .symbols import component_bounds
@@ -109,6 +133,8 @@ class Collision:
     #            | "component-outside-group-box" (S4-L2, R-36)
     #            | "component-in-foreign-group-box" (S4-L3, R-37)
     #            | "group-box-label" (S4-L3, R-37)
+    #            | "group-containment" (S4-L5a, R-38)
+    #            | "lane-box" | "lane-pipe" (S4-L5b, R-39)
     elem_a: str
     elem_b: str
     x: int
@@ -181,6 +207,26 @@ def group_box(g: Group) -> tuple[float, float, float, float]:
     return (float(x), float(y), float(x + g.size[0]), float(y + g.size[1]))
 
 
+def _overlap_exempt(i: int, j: int, groups: Sequence[Group]) -> bool:
+    """R-38-Ausnahmen vom GROUP-BOX-Gate (Nested Groups).
+
+    (a) zwei atomare Gruppen mit gemeinsamem composite-Elternteil
+        (Venn-Overlap für das geteilte Kind);
+    (b) zwei composites mit ≥ 1 gemeinsamem inkludiertem Kind;
+    (c) composite × eigenes inkludiertes Kind (Containment-Gate).
+    Ohne composites immer `False` (R-35 unverändert).
+    """
+    a, b = groups[i], groups[j]
+    ca, cb = is_composite(a), is_composite(b)
+    if ca and cb:
+        return bool(set(child_indices(i, groups)) & set(child_indices(j, groups)))
+    if ca:
+        return j in child_indices(i, groups)
+    if cb:
+        return i in child_indices(j, groups)
+    return bool(set(ancestor_indices(i, groups)) & set(ancestor_indices(j, groups)))
+
+
 def _check_group_boxes(
     groups: Sequence[Group], out: list[Collision]
 ) -> None:
@@ -190,12 +236,15 @@ def _check_group_boxes(
     Kollision, wenn der Overlap-Anteil der **kleineren** Box-Fläche
     > 50 % liegt; darunter = Boxen neben/über Eck erlaubt. Eine
     Kollision pro (A, B)-Paar, deterministische Schema-Reihenfolge.
+    S4-L5a (R-38): Paare gemäß `_overlap_exempt` sind ausgenommen.
     """
     boxes = [(g, group_box(g)) for g in groups]
     for i in range(len(boxes)):
         a, ba = boxes[i]
         for j in range(i + 1, len(boxes)):
             b, bb = boxes[j]
+            if _overlap_exempt(i, j, groups):
+                continue
             ov = _overlap_area(ba, bb)
             ref = min(_area(ba), _area(bb))
             if ref > 0 and ov > OVERLAP_THRESHOLD * ref:
@@ -207,6 +256,36 @@ def _check_group_boxes(
                     f"{100.0 * ov / ref:.0f} % (Schwelle "
                     f"{OVERLAP_THRESHOLD * 100.0:.0f} %, R-35)",
                 ))
+
+
+def _check_group_containment(
+    groups: Sequence[Group], out: list[Collision]
+) -> None:
+    """GROUP-CONTAINMENT-Gate (S4-L5a, R-38): jede inkludierte atomare
+    Kind-Box muss vollständig in der composite-Box liegen (keine
+    Außenkante darf herausragen; Kanten-Berührung erlaubt). Überstand
+    > 0 px → Kollision. Eine Kollision pro (composite, Kind)-Paar,
+    deterministische Schema-/Include-Reihenfolge.
+    """
+    for i, g in enumerate(groups):
+        if not is_composite(g):
+            continue
+        box = group_box(g)
+        for ci in child_indices(i, groups):
+            child = groups[ci]
+            cb = group_box(child)
+            over_x = max(box[0] - cb[0], 0.0, cb[2] - box[2])
+            over_y = max(box[1] - cb[1], 0.0, cb[3] - box[3])
+            if over_x <= 0 and over_y <= 0:
+                continue
+            out.append(Collision(
+                "group-containment",
+                f"group-{g.id}", f"group-{child.id}",
+                int(round(cb[0])), int(round(cb[1])),
+                f"Kind-Box {child.id!r} ragt aus der composite-Box "
+                f"{g.id!r} heraus (Überstand x={over_x:.0f} px, "
+                f"y={over_y:.0f} px; R-38)",
+            ))
 
 
 def _check_component_outside_group_box(
@@ -222,13 +301,13 @@ def _check_component_outside_group_box(
     Kollisions-Koordinate = Überstandspunkt: Symbol-BBox-Mitte
     (int-gerundet); eine Kollision pro (Komponente, Gruppe)-Paar,
     deterministische Schema-Reihenfolge (Komponenten × Gruppen).
+    S4-L5a (R-38): zusätzlich JEDE composite-Ahnen-Box (transitive
+    Mitgliedschaft; eigene atomare Box zuerst, dann Ahnen in
+    Schema-Reihenfolge).
     """
     if not groups:
         return
-    owner: dict[str, int] = {}
-    for i, g in enumerate(groups):
-        for m in g.members:
-            owner.setdefault(m, i)
+    owner = owner_index(groups)
     for c in components:
         gi = owner.get(c.id)
         if c.at is None:
@@ -236,20 +315,22 @@ def _check_component_outside_group_box(
         cb = component_bounds(c.type, c.at)
         if gi is None:
             continue  # nicht-gruppig: keine EIGENE Box → kein R-36-Treffer
-        box = group_box(groups[gi])
         assert c.at is not None
-        over_x = max(box[0] - cb[0], 0.0, cb[2] - box[2])
-        over_y = max(box[1] - cb[1], 0.0, cb[3] - box[3])
-        if over_x <= 0 and over_y <= 0:
-            continue
-        out.append(Collision(
-            "component-outside-group-box",
-            f"comp-{c.id}", f"group-{groups[gi].id}",
-            int(round((cb[0] + cb[2]) / 2)), int(round((cb[1] + cb[3]) / 2)),
-            f"Mitglied {c.id!r} außerhalb der Gruppen-Box "
-            f"groups[{gi}].at={groups[gi].at!r} size={groups[gi].size!r} "
-            f"(Überstand x={over_x:.0f} px, y={over_y:.0f} px; R-36)",
-        ))
+        for k in (gi, *ancestor_indices(gi, groups)):
+            box = group_box(groups[k])
+            over_x = max(box[0] - cb[0], 0.0, cb[2] - box[2])
+            over_y = max(box[1] - cb[1], 0.0, cb[3] - box[3])
+            if over_x <= 0 and over_y <= 0:
+                continue
+            out.append(Collision(
+                "component-outside-group-box",
+                f"comp-{c.id}", f"group-{groups[k].id}",
+                int(round((cb[0] + cb[2]) / 2)), int(round((cb[1] + cb[3]) / 2)),
+                f"Mitglied {c.id!r} außerhalb der Gruppen-Box "
+                f"groups[{k}].at={groups[k].at!r} size={groups[k].size!r} "
+                f"(Überstand x={over_x:.0f} px, y={over_y:.0f} px; "
+                f"{'R-36' if k == gi else 'R-38'})",
+            ))
 
 
 def _check_component_in_foreign_group_box(
@@ -265,22 +346,21 @@ def _check_component_in_foreign_group_box(
     COMPONENT-OUTSIDE-GROUP-BOX, R-36). Signalisiert Fehleinsortierung
     (Member in der falschen Box). Eine Kollision pro
     (Komponente, fremde-Gruppe)-Paar, deterministische Schema-
-    Reihenfolge.
+    Reihenfolge. S4-L5a (R-38): „fremd" = NICHT in der transitiven
+    Mitgliedschaft (eigene atomare Gruppe + alle composite-Ahnen).
     """
     if not groups:
         return
-    owner: dict[str, int] = {}
-    for i, g in enumerate(groups):
-        for m in g.members:
-            owner.setdefault(m, i)
+    owner = owner_index(groups)
     for c in components:
         if c.at is None:
             continue  # ungeplante Komponente (validate)
         cb = component_bounds(c.type, c.at)
         own = owner.get(c.id)
+        mine = membership(c.id, groups, owner)
         for i, g in enumerate(groups):
-            if i == own:
-                continue  # eigene Box: R-36s Zuständigkeit
+            if i in mine:
+                continue  # eigene Box(en): R-36s Zuständigkeit
             box = group_box(g)
             ov = _overlap_area(cb, box)
             if ov > 0.0:
@@ -314,14 +394,12 @@ def _check_group_box_labels(
       geprüft (Bindungs-/Komponenten-Texte ≠ „freies Label").
 
     Eine Kollision pro (Label, Box)-Paar, deterministische
-    Schema-Reihenfolge.
+    Schema-Reihenfolge. S4-L5a (R-38): „eigene Box" = transitive
+    Mitgliedschaft des Hosts (atomare Gruppe + composite-Ahnen).
     """
     if not groups:
         return
-    host_group: dict[str, int] = {}
-    for i, g in enumerate(groups):
-        for m in g.members:
-            host_group.setdefault(m, i)
+    host_group = owner_index(groups)
     label_index: dict[str, Label] = {
         f"lbl-{lbl.id}": lbl for lbl in labels
     }
@@ -331,16 +409,16 @@ def _check_group_box_labels(
             continue
         lbl = label_index.get(t.elem_id)
         if lbl is None or lbl.comp is None:
-            skip: int | None = None  # freies Label: alle Boxen
+            skip: set[int] = set()  # freies Label: alle Boxen
         else:
-            skip = host_group.get(lbl.comp)
+            skip = membership(lbl.comp, groups, host_group)
         tb = text_bbox(t)
         text_area = _area(tb)
         if text_area <= 0:
             continue
         for i, (g, gb) in enumerate(boxes):
-            if i == skip:
-                continue  # eigene Box des Host-Mitglieds (R-37)
+            if i in skip:
+                continue  # eigene Box(en) des Host-Mitglieds (R-37/R-38)
             ov = _overlap_area(tb, gb)
             if ov > OVERLAP_THRESHOLD * text_area:
                 out.append(Collision(
@@ -352,6 +430,66 @@ def _check_group_box_labels(
                     f"{g.id!r} (Schwelle "
                     f"{OVERLAP_THRESHOLD * 100.0:.0f} %, R-37)",
                 ))
+
+
+def _valid_lanes(lanes: Sequence[Lane]) -> list[Lane]:
+    return [
+        lane for lane in lanes
+        if lane.at is not None and lane.size is not None
+        and lane.size[0] > 0 and lane.size[1] > 0
+    ]
+
+
+def _check_lane_boxes(lanes: Sequence[Lane], out: list[Collision]) -> None:
+    """LANE-BOX-Gate (S4-L5b, R-39): Overlap zweier Lane-Boxen > 50 %
+    der kleineren Box-Fläche (Methodik wie GROUP-BOX, R-35). Eine
+    Kollision pro (A, B)-Paar, deterministische Schema-Reihenfolge.
+    """
+    boxes = [(lane, lane_box(lane)) for lane in _valid_lanes(lanes)]
+    for i in range(len(boxes)):
+        a, ba = boxes[i]
+        for j in range(i + 1, len(boxes)):
+            b, bb = boxes[j]
+            ov = _overlap_area(ba, bb)
+            ref = min(_area(ba), _area(bb))
+            if ref > 0 and ov > OVERLAP_THRESHOLD * ref:
+                out.append(Collision(
+                    "lane-box",
+                    f"lane-{a.id}", f"lane-{b.id}",
+                    int(round(ba[0])), int(round(ba[1])),
+                    f"Lane-Boxen überlappen zu "
+                    f"{100.0 * ov / ref:.0f} % (Schwelle "
+                    f"{OVERLAP_THRESHOLD * 100.0:.0f} %, R-39)",
+                ))
+
+
+def _check_lane_pipes(
+    lanes: Sequence[Lane],
+    pipes: Sequence[PipeGeometry],
+    exempt: frozenset[str],
+    out: list[Collision],
+) -> None:
+    """LANE-PIPE-Gate (S4-L5b, R-39): jede Pipe in `lane.pipes` braucht
+    mindestens EIN Segment in der Lane-Box (Kanten-Berührung ≤ 2 px =
+    innerhalb). `exempt` = degenerierte Lane-Pipes (R-37-Fallback,
+    Warnung statt Gate). Unbekannte Pipe-IDs: Validierungs-Problem.
+    """
+    by_id = {p.id: p for p in pipes}
+    for lane in _valid_lanes(lanes):
+        box = lane_box(lane)
+        for pid in lane.pipes:
+            p = by_id.get(pid)
+            if p is None or pid in exempt or not p.points:
+                continue
+            if route_in_box(p.points, box):
+                continue
+            out.append(Collision(
+                "lane-pipe",
+                f"pipe-{pid}", f"lane-{lane.id}",
+                p.points[0][0], p.points[0][1],
+                f"Pipe {pid!r} läuft nicht durch Lane {lane.id!r} "
+                f"(kein Segment in at={lane.at!r} size={lane.size!r}; R-39)",
+            ))
 
 
 def _check_readout_size(texts: Sequence[TextElem], out: list[Collision]) -> None:
@@ -381,6 +519,9 @@ def detect_collisions(
     readouts: Sequence[Readout] = (),
     labels: Sequence[Label] = (),
     groups: Sequence[Group] = (),
+    lanes: Sequence[Lane] = (),
+    lane_exempt: frozenset[str] = frozenset(),
+    hidden_kinds: frozenset[str] = frozenset(),
 ) -> list[Collision]:
     """Alle S3-Kollisionen (deterministisch: Eingabe-Reihenfolge).
 
@@ -402,7 +543,13 @@ def detect_collisions(
       + GROUP-BOX×LABEL-Check (Label mit > 50 % Text-Fläche in
       fremder Box; gebundene Labels ignorieren die eigene Box;
       `labels` + `groups` + `texts` zusammen).
+    - `lanes` (S4-L5b, R-39): LANE-BOX + LANE-PIPE (`pipes`);
+      `lane_exempt` = degenerierte Lane-Pipe-IDs (kein LANE-PIPE).
+    - `hidden_kinds` (S4-L5c): Pipe-Kinds, die nicht gezeichnet werden
+      → kein Hindernis (LINE×TEXT, LANE-PIPE).
     """
+    if hidden_kinds:
+        pipes = [p for p in pipes if p.kind not in hidden_kinds]
     component_boxes: dict[str, tuple[float, float, float, float]] | None = (
         {c.id: component_bounds(c.type, c.at)
          for c in components if c.at is not None}
@@ -410,7 +557,11 @@ def detect_collisions(
         else None
     )
     _ = readouts  # R-34-API-Vertrag (s. Docstring)
-    return _detect(texts, pipes, component_boxes, groups, components, labels)
+    out = _detect(texts, pipes, component_boxes, groups, components, labels)
+    # 10) LANE-BOX + 11) LANE-PIPE (S4-L5b, R-39).
+    _check_lane_boxes(lanes, out)
+    _check_lane_pipes(lanes, pipes, lane_exempt, out)
+    return out
 
 
 def _detect(
@@ -488,6 +639,8 @@ def _detect(
 
     # 6) GROUP-BOX-Overlap (S4-L1, R-35).
     _check_group_boxes(groups, out)
+    # 6b) GROUP-CONTAINMENT (S4-L5a, R-38).
+    _check_group_containment(groups, out)
     # 7) COMPONENT-OUTSIDE-GROUP-BOX (S4-L2, R-36).
     _check_component_outside_group_box(components, groups, out)
     # 8) COMPONENT-IN-FOREIGN-GROUP-BOX (S4-L3, R-37).

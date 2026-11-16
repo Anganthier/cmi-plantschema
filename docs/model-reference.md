@@ -14,8 +14,10 @@ canvas: { width: 2200, height: 1500, background: "#0b1220" }
 components: [ … ]                 # optional (default [])
 pipes: [ … ]
 groups: [ … ]                     # optional (default [], S4-L1, R-35)
+lanes: [ … ]                      # optional (default [], S4-L5b, R-39)
 readouts: [ … ]
 labels: [ … ]
+hidden_kinds: [ ctl ]             # optional (default [], S4-L5c, R-41)
 ```
 
 - **R-1 (M)** Unbekannte Keys auf beliebiger Ebene → Schema-Fehler
@@ -75,12 +77,15 @@ labels: [ … ]
 |---|---|---|
 | `id` | string (R-3) | M |
 | `label` | string (Box-Beschriftung) | K |
-| `members` | list[string] (Component-IDs, R-3) | M |
+| `kind` (S4-L5a, R-38) | `atomic` (Default) \| `composite` | K |
+| `members` | list[string] (Component-IDs, R-3); Default `[]` (composite: leer) | M (atomic) |
+| `includes` (S4-L5a, R-38) | list[string] (Group-IDs atomarer Gruppen, R-3); nur composite | M (composite) |
 | `hub` | string (Component-ID, R-3) | K |
 | `order` (S4-L2, R-36) | list[string] (Member-IDs; Permutation von `members`) | K |
 | `hub_at` (S4-L2, R-36) | `[x, y]` Hub-Anker (Default: Box-Mitte) | K |
 | `at` | `[x, y]` obere linke Ecke der Box (R-35: > 0) | M |
 | `size` | `[bw, höhe]` Box-Breite/Höhe (R-35: > 0) | M |
+| `frame` (S4-L5c, R-38) | bool; Default `None` = atomic **an**, composite **aus** | K |
 
 - **R-35 (M, S4-L1) Group-Modell + Makro-Geometrie:** Makro-Gruppen
   gehören ins YAML (plant-neutral, David-Entscheidung S4).
@@ -202,6 +207,142 @@ labels: [ … ]
       die EIGENE Gruppen-Box des Hosts wird ignoriert, alle fremden
       Boxen werden geprüft. (R-35-Ankündigung, in S4-L3 gelandet.)
 
+- **R-38 (M, S4-L5a) Nested Groups (composite + includes + transitive
+  Mitgliedschaft):** Divide-and-Conquer — eine **composite**-Gruppe
+  (`kind: composite`) ist ein reiner Container: `members` leer,
+  `includes` nicht leer (YAML-Referenz auf atomare Group-IDs), kein
+  `hub`/`order`/`hub_at`. **Tiefe max. 1:** composite inkludiert nur
+  atomare Gruppen. Eine atomare Gruppe darf von **mehreren** composites
+  inkludiert werden (Venn-Kind, z. B. Puffer in Holz- und Solar-Eltern).
+  `at`/`size` bleiben Pflicht (Autor-Makro-Box, keine Auto-Ableitung).
+  Helfer: `plantschema/groups.py` (`transitive_members`,
+  `ancestor_groups`, `membership`, `pipe_foreign_indices`).
+  - **Transitive Mitgliedschaft:** `transitive_members(g)` = `members` +
+    `members` aller inkludierten atomaren Gruppen (flach);
+    `ancestor_groups(g)` = composites, die `g` inkludieren. Mitgliedschaft
+    einer Komponente = eigene atomare Gruppe + alle composite-Ahnen.
+  - **Validierung (Exit 2):** `group-kind-shape` (composite mit
+    `members`/`hub`/`order`/`hub_at` oder ohne `includes`; atomic mit
+    `includes`), `group-include-ref` (Include-ID existiert nicht),
+    `group-include-composite` (composite inkludiert composite),
+    `group-include-cycle` (Gruppe auf einem `includes`-Zyklus, defensiv).
+    Hinweis: atomic mit leeren `members` bleibt (wie bisher) zulässig.
+  - **Gates (Exit 3, transitive Semantik):**
+    - **GROUP-CONTAINMENT** (`group-containment`, neu): jede inkludierte
+      Kind-Box muss vollständig in der composite-Box liegen (keine
+      Außenkante ragt heraus, Überstand > 0 px → Kollision;
+      Kanten-Berührung erlaubt).
+    - **GROUP-BOX** (R-35) bleibt strikt (> 50 % der kleineren Box), mit
+      Ausnahmen: (a) zwei atomare Boxen mit gemeinsamem composite-
+      Elternteil (Venn-Overlap), (b) zwei composite-Boxen mit ≥ 1
+      gemeinsamem inkludierten Kind, (c) composite × eigenes Kind
+      (Containment = GROUP-CONTAINMENT). Alle übrigen Paare (u. a.
+      composite × nicht-inkludierte atomare Box) strikt wie bisher.
+    - **COMPONENT-OUTSIDE-GROUP-BOX**: Komponente muss in der Box der
+      eigenen atomaren Gruppe UND jedes composite-Ahnen liegen.
+    - **COMPONENT-IN-FOREIGN-GROUP-BOX**: „fremd" = nicht in der
+      transitiven Mitgliedschaft (eigene atomare Gruppe + Ahnen).
+    - **GROUP-BOX×LABEL**: gebundenes Label ignoriert alle Boxen der
+      transitiven Mitgliedschaft des Hosts; freies Label prüft alle.
+  - **R-37-Refinement (Routing):** fremde Box einer inter-gruppigen
+    Pipe = Box ohne transitive Mitgliedschaft der Pipe. Nicht fremd:
+    atomare Gruppen beider Enden, deren composite-Ahnen und — für
+    composites, die BEIDE Enden enthalten (Pipe „innerhalb" des
+    composites) — alle inkludierten Kinder. Ohne gemeinsamen composite
+    ist ein geteiltes Kind (bzw. ein composite ohne Bezug) fremd →
+    Kanal-Detour. Ohne composites = R-37 unverändert.
+  - **Emission:** composite-Boxen werden VOR den atomaren Boxen in
+    `layer-groups` emittiert (liegen darunter); `<g id="group-<id>"
+    data-kind="composite" data-includes="<ids>">` + `<rect class="gbox
+    gbox-composite" rx="10" ry="10">` + optionales `.gbox-lbl` (oben
+    links, Offset 8 px wie atomic). CSS `.gbox-composite`
+    (`stroke-width:2`, `stroke-dasharray:10 5`, kräftigere Farbe) wird
+    NUR emittiert, wenn das Schema composites enthält → Schemas ohne
+    composites bleiben byte-identisch (Hash-Stabilität).
+  - **`frame` (S4-L5c, Default-Regel):** Rahmen (`<rect>`) + Label
+    (`.gbox-lbl`) werden gezeichnet **gdw.** `frame: true` ODER
+    (`frame` fehlt UND `kind: atomic`). composite ohne `frame` → kein
+    Rahmen, kein Label (nur der leere Wrapper `<g id="group-<id>"
+    data-kind="composite" data-includes=…>` bleibt als ID-Vertrag).
+    `frame: false` unterdrückt immer Rahmen UND Label. CSS
+    `.gbox-composite` nur, wenn mind. ein composite gerahmt ist. Reine
+    Darstellung: **alle Gates** (GROUP-BOX, GROUP-CONTAINMENT,
+    COMPONENT-*, GROUP-BOX×LABEL) und das Routing arbeiten unverändert
+    auf `at`/`size`.
+
+## 4c. Lane (S4-L5b, R-39)
+
+| Feld | Typ | Pflicht |
+|---|---|---|
+| `id` | string (R-3; eindeutig über alle Arten, R-5) | M |
+| `label` | string (Box-Beschriftung) | K |
+| `at` | `[x, y]` obere linke Ecke der Lane-Box (> 0) | M |
+| `size` | `[w, h]` Breite/Höhe (> 0) | M |
+| `pipes` | list[string] (Pipe-IDs, R-3; nicht leer) | M |
+| `frame` (S4-L5c, R-39) | bool; Default `None` = **an** | K |
+
+- **R-39 (M, S4-L5b) Lanes = Leitungs-Reservierung:** Eine Lane ist
+  KEINE Gruppe (kein `members`/`hub`/`kind`), sondern ein reservierter
+  Routing-Korridor (Modul `plantschema/lanes.py`). Eine Pipe steht in
+  höchstens einer Lane; `Pipe` selbst hat keine neuen Felder.
+  - **Geometrie:** Achse = längere Box-Seite (`w >= h` → horizontal,
+    sonst vertikal). Spur der i-ten Pipe (0-basiert, Reihenfolge =
+    `lane.pipes`): horizontal `y_i = y + h/2 − (n−1)/2·S + i·S`,
+    vertikal analog `x_i` (zentriert, gleichmäßig; `S` =
+    `lanes.LANE_SPACING` = 10 px; ganzzahlig gerundet).
+  - **Enge Box:** `(n−1)/2·S > (Quer-Ausdehnung)/2` → `S` halbiert
+    (5 px, deterministisch) + Warnung `LANE-FALLBACK` (R-33-Stil,
+    Exit bleibt 0).
+  - **Auto-Route** (Pipe in `lane.pipes`, OHNE `via`): orthogonal über
+    die Spur — horizontal `from → (from.x, y_i) → (to.x, y_i) → to`,
+    vertikal `from → (x_i, from.y) → (x_i, to.y) → to`; kein
+    R-37-Detour. **`via` gewinnt immer** (R-37-Override).
+  - **Degeneriert:** beide Ports auf derselben Koordinate entlang der
+    Lane-Achse (horizontal: gleiches x, vertikal: gleiches y) → kein
+    Lauf entlang der Lane → R-37/Manhattan-Fallback. Berührt die
+    Fallback-Route die Box → ok; sonst Warnung `LANE-FALLBACK @
+    pipe-<id>` statt LANE-PIPE-Treffer.
+  - Nicht-Lane-Pipes: R-37 unverändert.
+  - **Validierung (Exit 2):** `lane-id-duplicate`, `lane-geometry`
+    (`at`/`size` fehlen oder ≤ 0), `lane-pipe-ref`,
+    `lane-pipe-duplicate` (Pipe in > 1 Lane bzw. doppelt in einer).
+  - **Gates (Exit 3):** **LANE-BOX** (`lane-box`: zwei Lane-Boxen
+    überlappen > 50 % der kleineren Fläche, Methodik wie GROUP-BOX) +
+    **LANE-PIPE** (`lane-pipe`: Pipe in `lane.pipes` ohne Segment in
+    der Lane-Box; Kanten-Berührung ≤ 2 px zählt als innerhalb;
+    degenerierte Pipes ohne `via` ausgenommen). Lane-Boxen sind keine
+    Gruppen-Boxen (kein Einfluss auf COMPONENT-OUTSIDE/-FOREIGN,
+    GROUP-BOX, GROUP-BOX×LABEL); Komponenten dürfen in Lane-Boxen liegen.
+  - **Emission:** `layer-lanes` (nach `layer-groups`, vor
+    `layer-pipes`) — NUR wenn Lanes existieren; `<g id="lane-<id>"
+    data-axis="horizontal|vertical" data-pipes="<ids>">` + `<rect
+    class="lane">` + optionales `.lane-lbl` (oben links, Offset 6/12 px).
+    CSS `.lane` (gestrichelt `3 3`, `stroke rgba(200,180,140,0.30)`) /
+    `.lane-lbl` (10 px) nur bei vorhandenen Lanes → Schemas ohne Lanes
+    bleiben byte-identisch.
+  - **`frame` (S4-L5c, Default-Regel):** Rahmen + Label gdw. `frame`
+    fehlt ODER `frame: true`; `frame: false` → nur der leere Wrapper
+    `<g id="lane-<id>" data-axis data-pipes>`. Spuren, Routing,
+    LANE-BOX/LANE-PIPE unverändert (arbeiten auf `at`/`size`).
+
+## 4d. hidden_kinds (S4-L5c, R-41)
+
+- **R-41 (M, S4-L5c) `hidden_kinds` = SVG-Display-Option:** Top-Level
+  `hidden_kinds: list[vl|rl|ww|gas|ctl]` (Default `[]`; unbekannter
+  Kind → Schema-Fehler, Exit 2). Das Modell bleibt vollständig
+  (Pipes werden geladen, validiert, geroutet). Wirkung NUR auf:
+  - **Emission:** Pipes mit `kind ∈ hidden_kinds` werden nicht
+    gezeichnet (weder `pipe-<id>` noch `.pipe-arrow`).
+  - **Slots (R-32/R-33):** ausgeblendete Pipes blockieren keine
+    Label-Slots (keine SLOT-FALLBACK-Warnung durch sie).
+  - **Gate (R-34):** ausgeblendete Pipes sind kein Hindernis
+    (LINE×TEXT; LANE-PIPE). `check` kann dadurch Exit 0 liefern.
+  - **Stutzen (R-42):** zählen nicht als Verbindung.
+  - **Validierung:** `hidden-pipe-in-lane` (Exit 2) — eine Pipe mit
+    ausgeblendetem Kind darf in keiner `lane.pipes` stehen.
+  - **Determinismus:** `hidden_kinds: []` (bzw. nur Kinds ohne Pipes)
+    → byte-identisch zum Stand ohne das Feld.
+
 ## 5. P&ID-Symbole + Port-Geometrie-Katalog (S2, Seed cmi)
 
 **Symbole (Kanon):** 18 P&ID-Symbole als `<g id="pid-…">` im emittierten
@@ -213,6 +354,17 @@ Haustechnik-Symbole; cmi-Demo-Block `pid-demo` wird NICHT portiert):
 `pid-mixing`, `pid-pump-cent`, `pid-valve-2way`, `pid-valve-3way`,
 `pid-valve-globe`, `pid-valve-actuator`, `pid-throttle`, `pid-radiator`,
 `pid-tap`, `pid-chimney`, `pid-pt`, `pid-flow-switch`.
+
+- **R-40 (M, S4-L5b) Junction (Knoten-Symbol):** Komponententyp
+  `junction` = sichtbare Verschaltung/Verteiler (normale Komponente:
+  `id`, `type: junction`, optional `at`/`label`; darf in Gruppen und
+  Lane-Boxen liegen). Symbol `pid-junction` (Erweiterung, NICHT aus dem
+  cmi-Seed): gefüllter Kreis Radius 6 (`<circle class="pid" r="3"
+  style="stroke-width:6"/>` — Standard-`.pid`-Stil, kein Fill-Farb-
+  Change). Ports `left`/`right`/`top`/`bottom` (Kanten-Mitte, ±6),
+  BBox (−6, −6, +6, +6), Label-Offset 18. `pid-junction` steht im
+  `<defs>` NUR, wenn das Schema eine junction enthält (Byte-Stabilität
+  der 18-Symbol-Defs).
 
 - **R-12 (S→M, S2)** Komponententypen mit bekanntem Symbol werden per
   `<use href="#pid-…">` (x/y = `at`, Symbol (0,0)-zentriert) gerendert,
@@ -257,6 +409,7 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 | `tap` | `in` (−14,0, left) · `out` (+14,0, right) · `draw` (0,+20, down) |
 | `chimney` | `left` (−9,0, left) · `right` (+9,0, right) · `bottom` (0,+34, down) |
 | `pt`, `flow-switch` | keine Pipe-Ports (nur Readout-Hosts, `x/y`-Referenz) |
+| `junction` (S4-L5b, R-40) | `left` (−6,0, left) · `right` (+6,0, right) · `top` (0,−6, up) · `bottom` (0,+6, down) |
 
 - **R-31 (S, S2) Typ→Symbol-Mapping:** 1:1 (`tank-buffer` →
   `pid-tank-buffer` …, `pump` → `pid-pump-cent`); Alias `valve` =
@@ -357,6 +510,18 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 | `component-placement-missing` | `at: None` + keine/nicht-eindeutige Gruppenzugehörigkeit (R-36, S4-L2) |
 | `component-in-foreign-group-box` | **Kollisions-Gate-Code** (nicht validate; S4-L3, R-37, Exit 3): Komponente in fremder Gruppen-Box (Overlap > 0 px, eigene Box ausgenommen) — s. R-37/§12 |
 | `group-box-label` | **Kollisions-Gate-Code** (nicht validate; S4-L3, R-37, Exit 3): Label > 50 % der Text-Fläche in fremder Gruppen-Box (gebundene Labels: eigene Box ausgenommen) — s. R-37/§12 |
+| `group-kind-shape` | composite mit `members`/`hub`/`order`/`hub_at` oder ohne `includes`; atomic mit `includes` (R-38, S4-L5a) |
+| `group-include-ref` | `includes`-ID existiert nicht als Gruppe (R-38, S4-L5a) |
+| `group-include-composite` | composite inkludiert composite (Tiefe max. 1, R-38, S4-L5a) |
+| `group-include-cycle` | Gruppe liegt auf einem `includes`-Zyklus (defensiv, R-38, S4-L5a) |
+| `group-containment` | **Kollisions-Gate-Code** (nicht validate; S4-L5a, R-38, Exit 3): inkludierte Kind-Box ragt aus der composite-Box heraus — s. R-38/§12 |
+| `lane-id-duplicate` | doppelte Lane-ID (Lane×Lane, R-39; Lane×fremde-Art bleibt `dup-id`, R-5) |
+| `lane-geometry` | Lane-`at`/`size` fehlt oder Wert ≤ 0 (R-39) |
+| `lane-pipe-ref` | Pipe-ID in `lane.pipes` existiert nicht (R-39) |
+| `lane-pipe-duplicate` | Pipe steht in > 1 Lane (bzw. doppelt in einer Lane, R-39) |
+| `hidden-pipe-in-lane` | Pipe mit `kind ∈ hidden_kinds` steht in einer `lane.pipes` (S4-L5c, R-41) |
+| `lane-box` | **Kollisions-Gate-Code** (nicht validate; S4-L5b, R-39, Exit 3): zwei Lane-Boxen überlappen > 50 % der kleineren Box |
+| `lane-pipe` | **Kollisions-Gate-Code** (nicht validate; S4-L5b, R-39, Exit 3): Lane-Pipe ohne Segment in der Lane-Box (≤ 2 px Berührung = innen) |
 
 - **R-20 (M)** `validate` liefert **alle** Probleme (nicht nur das erste);
   CLI gibt je Problem eine Zeile aus und exitet 2.
@@ -370,9 +535,13 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 | Pipe | `path[@id="pipe-<id>"]` | + `data-kind`, `data-flow` (falls `flow`), `class="pipe <kind>"`; **kein** `marker-end` (S2, R-29) |
 | Pfeil-Endpunkt | `path[@class="pipe-arrow arrow-<kind>"]` | Kleines Dreieck am Pipe-Ende (S2, R-29), Fill = Kind-Farbe |
 | Gruppe-Box | `g[@id="group-<id>"]` in `layer-groups` | + `data-hub` (falls `hub`); Inhalt: `<rect class="gbox">` (x/y = `at`, width/height = `size`) + optionales Label-Text `.gbox-lbl` (oben links, Offset 8 px; S4-L1, R-35) |
+| composite-Box (S4-L5a, R-38) | `g[@id="group-<id>"]` in `layer-groups` (vor den atomaren Boxen) | + `data-kind="composite"`, `data-includes` (Leerzeichen-getrennte Kind-IDs); Inhalt: `<rect class="gbox gbox-composite" rx="10" ry="10">` + optionales `.gbox-lbl`; CSS `.gbox-composite` nur bei vorhandenen composites |
+| Lane-Box (S4-L5b, R-39) | `g[@id="lane-<id>"]` in `layer-lanes` | + `data-axis` (`horizontal`/`vertical`), `data-pipes` (Leerzeichen-getrennte Pipe-IDs); Inhalt: `<rect class="lane">` + optionales `.lane-lbl` (oben links, Offset 6/12 px); CSS `.lane`/`.lane-lbl` nur bei vorhandenen Lanes |
+| junction (S4-L5b, R-40) | `g[@id="comp-<id>"]` | wie jede Komponente (`data-type="junction"`, `data-symbol="pid-junction"`, `<use href="#pid-junction">`); `#pid-junction` im `<defs>` nur bei vorhandener junction |
+| Stutzen (S4-L5c, R-42) | `path[@class="stub <kind>"]` in `layer-components`, direkt nach `comp-<id>` | + `data-comp`, `data-port`; Gerade BBox-Kante → Port; CSS `.stub` nur bei vorhandenen Stutzen |
 | Readout | `g[@id="readout-<id>"]` | + `data-value-key` (falls gesetzt), `data-readout` = Label-Text, `data-loop` (falls gesetzt); Inhalt: `<use href="#pid-pt">` + Wert `.ro-val` (`data-value="true"`) + Label `.ro-lbl` (cmi-Kanon; `side` → `text-anchor`, R-15) |
 | Label | `text[@id="lbl-<id>"]` | + `text-anchor`, `class="txt"` |
-| Layer | `layer-groups`, `layer-pipes`, `layer-components`, `layer-readouts`, `layer-labels` | Reihenfolge = Z-Order (R-2; `layer-groups` = S4-L1, R-35, unterhalb der Zonen-Behälter) |
+| Layer | `layer-groups`, (`layer-lanes`), `layer-pipes`, `layer-components`, `layer-readouts`, `layer-labels` | Reihenfolge = Z-Order (R-2; `layer-groups` = S4-L1, R-35, unterhalb der Zonen-Behälter; `layer-lanes` = S4-L5b, R-39, nur bei vorhandenen Lanes) |
 
 - **R-21 (M)** IDs sind deterministisch aus `id` abgeleitet (Präfixe
   `comp-`/`pipe-`/`readout-`/`lbl-`) — UI-Bindungsvertrag (cmi S4N-3:
@@ -437,6 +606,14 @@ Text `.txt`); Style-Block enthält cmi-V6.3-Klassen (`.pid`, `.pid-t`,
       (`group-box-label`, R-37/S4-L3): Label > 50 % Text-Fläche in
       fremder Makro-Box (gebundene Labels ignorieren die eigene
       Box; Kanon s. R-37).
+   9. **GROUP-CONTAINMENT** (`group-containment`, R-38/S4-L5a):
+      Kind-Box ragt aus composite-Box heraus (> 0 px). Gates 5–8
+      nutzen ab S4-L5a die transitive Mitgliedschaft (Kanon s. R-38).
+  10. **LANE-BOX** (`lane-box`, R-39/S4-L5b): zwei Lane-Boxen > 50 %
+      der kleineren Fläche. 11. **LANE-PIPE** (`lane-pipe`,
+      R-39/S4-L5b): Lane-Pipe ohne Segment in der Lane-Box (Kanon s.
+      R-39). Warnungs-Block enthält zusätzlich `LANE-FALLBACK`-Zeilen
+      (enge Lane / degenerierte Pipe ohne Box-Berührung; Exit bleibt 0).
   Kanon-BBox: `text-anchor`-Korrektur (`end` → x = anchor_x − width,
   `middle` → x = anchor_x − width/2; cmi `text_bbox`-Logik).
   **Report-Format:** je Kollision eine Zeile
@@ -464,6 +641,23 @@ Stiele, Pfeil-Enden; `valve`-Alias = valve-2way):
 | `mixing` | (−14, −11, +14, +14) | `tap` | (−14, −7, +14, +23) |
 | `pump` | (−20, −13, +20, +22) | `chimney` | (−14, −40, +18, +34) |
 | `pt`, `flow-switch` | (−8, −8, +8, +16) | Platzhalter (unbekannter Typ) | (−20, −20, +20, +20) |
+| `junction` (R-40) | (−6, −6, +6, +6) | | |
+
+- **R-42 (M, S4-L5c) Stutzen / Docking-Connector:** Leitungen docken
+  außerhalb des Symbols an. Für jeden Port, der **strikt im Inneren**
+  der `SYMBOL_BOUNDS`-BBox liegt (`x0 < dx < x1` und `y0 < dy < y1`)
+  UND an dem mind. eine sichtbare Pipe (`from`/`to`, Kind ∉
+  `hidden_kinds`) endet, wird ein Stutzen gezeichnet: Gerade vom
+  BBox-Kantenpunkt auf der Port-Achse (up/down: `(dx, y0|y1)`,
+  left/right: `(x0|x1, dy)`) zum Port. Katalog (`symbols.port_stubs`,
+  Alias-aware): tank-buffer mid-top/mid-bottom, boiler-oil top/bottom,
+  boiler-solid top/bottom, heatex-plate top/bottom, chimney left/right,
+  valve-2way/valve/valve-globe/valve-actuator/throttle stem, tap draw.
+  Keine Stutzen: junction (Ports auf der Kante), flow-switch/pt (keine
+  Ports), mixing (`top` (0,−14) liegt über y0 = −11, nicht innen).
+  Farbe = Kind der ersten verbundenen Pipe (Schema-Reihenfolge,
+  `class="stub <kind>"`), `.stub{stroke-width:3}`. Pipe-Geometrie,
+  Routing, Slots und Gates bleiben unverändert (Endpunkte am Port).
 
 - **ALC-Änderung (S3):** `Label.at` optional + neue Felder
   `Label.comp`/`Label.port` (Auto-Slots, R-32/R-33); neue
@@ -489,6 +683,25 @@ Stiele, Pfeil-Enden; `valve`-Alias = valve-2way):
   Validierungs-Probleme (`component-placement-missing`,
   `group-order-member`); neues Gate-Check `component-outside-group-box`
   (R-36); bestehende R-1…R-35 unverändert.
+
+- **ALC-Änderung (S4-L5b):** neue Root-Liste `lanes` (default `[]`) +
+  `Lane`-Modell (R-39); neuer Komponententyp `junction` (R-40); Modul
+  `lanes.py` (`LANE_SPACING`, Spuren, Zuordnung, Warnungen); Routing
+  `route.route_lane` (Lane-Auto-Route, via-Override, degenerierter
+  R-37-Fallback); 4 neue Validierungs-Probleme (`lane-id-duplicate`,
+  `lane-geometry`, `lane-pipe-ref`, `lane-pipe-duplicate`); 2 neue
+  Gate-Checks (`lane-box`, `lane-pipe`); Warnung `LANE-FALLBACK`;
+  Emission `layer-lanes`/`.lane`/`.lane-lbl` und `#pid-junction` nur
+  bei Bedarf (Schemas ohne Lanes/junctions byte-identisch);
+  bestehende R-1…R-38 unverändert.
+
+- **ALC-Änderung (S4-L5c):** `Group.frame`/`Lane.frame` (K; composite-
+  Default **ohne** Rahmen+Label → geänderte SVGs aller composite-
+  Schemas); Root-Feld `hidden_kinds` (R-41) + Validierungs-Problem
+  `hidden-pipe-in-lane`; `detect_collisions(..., hidden_kinds=)`;
+  Stutzen `.stub` (R-42) → geänderte SVGs aller Schemas mit
+  verbundenen Innen-Ports. Schemas ohne composites und ohne solche
+  Ports bleiben byte-identisch; Gates/Routing unverändert.
 
 ## 13. Exit-Codes (CLI-Kanon)
 

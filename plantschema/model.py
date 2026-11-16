@@ -26,6 +26,7 @@ __all__ = [
     "Group",
     "Label",
     "LabelSpec",
+    "Lane",
     "Pipe",
     "PipeKind",
     "PortRef",
@@ -170,16 +171,30 @@ class Group(_Model):
     - `order` (S4-L2, R-36) = explizite Mitglied-Reihenfolge für die
       Spalten-Split-Zuordnung (Default: `members`-Reihenfolge, ohne Hub).
     - `hub_at` (S4-L2, R-36) = expliziter Hub-Anker (Default: Box-Mitte).
+    - `kind` (S4-L5a, R-38) = `atomic` (Default, Gruppe mit `members`)
+      oder `composite` (reiner Container: `members` leer, `includes`
+      nicht leer; Tiefe max. 1 — nur atomare Gruppen inkludierbar).
+      Shape-/Referenz-Checks: `validate` (`group-kind-shape`,
+      `group-include-ref`, `group-include-cycle`,
+      `group-include-composite`).
+    - `includes` (S4-L5a, R-38) = IDs inkludierter atomarer Gruppen
+      (nur composite; eine atomare Gruppe darf in mehreren composites
+      stehen — Venn-Kind).
     """
 
     id: str
     label: str | None = None
-    members: list[str]
+    kind: Literal["atomic", "composite"] = "atomic"
+    members: list[str] = Field(default_factory=list)
+    includes: list[str] = Field(default_factory=list)
     hub: str | None = None
     at: Point
     size: Point
     order: list[str] | None = None
     hub_at: Point | None = None
+    #: S4-L5c: Rahmen+Label zeichnen? `None` = Default (atomic an,
+    #: composite aus); reine Darstellung — Gates arbeiten auf at/size.
+    frame: bool | None = None
 
     @field_validator("id")
     @classmethod
@@ -191,6 +206,13 @@ class Group(_Model):
     def _v_members(cls, v: list[str]) -> list[str]:
         for m in v:
             check_id(m, "group.members[]")
+        return v
+
+    @field_validator("includes")
+    @classmethod
+    def _v_includes(cls, v: list[str]) -> list[str]:
+        for m in v:
+            check_id(m, "group.includes[]")
         return v
 
     @field_validator("order")
@@ -206,6 +228,41 @@ class Group(_Model):
     @classmethod
     def _v_hub(cls, v: str | None) -> str | None:
         return check_id(v, "group.hub") if v is not None else None
+
+
+class Lane(_Model):
+    """Leitungs-Box (S4-L5b, R-39): reservierter Routing-Korridor.
+
+    KEINE Gruppe (kein `members`/`hub`/`kind`) — reine Routen-
+    Reservierung. Pipes in `pipes` (ohne `via`) laufen mit gleichem
+    Abstand (`lanes.LANE_SPACING`) entlang der längeren Box-Achse.
+
+    - `at`/`size` PFLICHT (> 0; fehlend/≤ 0 → Validierungs-Problem
+      `lane-geometry`, daher hier optional und erst in `validate`
+      geprüft).
+    - `pipes` = Pipe-IDs (nicht leer; Referenz-/Duplikat-Checks in
+      `validate`: `lane-pipe-ref`, `lane-pipe-duplicate`).
+    """
+
+    id: str
+    label: str | None = None
+    at: Point | None = None
+    size: Point | None = None
+    pipes: list[str] = Field(min_length=1)
+    #: S4-L5c: Rahmen+Label zeichnen? `None` = Default (an).
+    frame: bool | None = None
+
+    @field_validator("id")
+    @classmethod
+    def _v_id(cls, v: str) -> str:
+        return check_id(v, "lane.id")
+
+    @field_validator("pipes")
+    @classmethod
+    def _v_pipes(cls, v: list[str]) -> list[str]:
+        for m in v:
+            check_id(m, "lane.pipes[]")
+        return v
 
 
 class PortRef(_Model):
@@ -337,8 +394,13 @@ class Schema(_Model):
     components: list[Component] = Field(default_factory=list)
     pipes: list[Pipe] = Field(default_factory=list)
     groups: list[Group] = Field(default_factory=list)
+    lanes: list[Lane] = Field(default_factory=list)
     readouts: list[Readout] = Field(default_factory=list)
     labels: list[Label] = Field(default_factory=list)
+    #: S4-L5c: SVG-Display-Option — Pipes dieser Kinds werden nicht
+    #: gezeichnet und zählen nicht als Hindernis (Slots/Gates); das
+    #: Modell bleibt vollständig validiert. Default [] = unverändert.
+    hidden_kinds: list[PipeKind] = Field(default_factory=list)
 
     @field_validator("version")
     @classmethod
@@ -350,3 +412,8 @@ class Schema(_Model):
     @property
     def component_ids(self) -> set[str]:
         return {c.id for c in self.components}
+
+    @property
+    def hidden_kind_values(self) -> frozenset[str]:
+        """`hidden_kinds` als String-Menge (S4-L5c)."""
+        return frozenset(k.value for k in self.hidden_kinds)

@@ -1,0 +1,69 @@
+# S4-L5b Ladder L10 — Lanes (R-39), Stufe 1:
+# 2 atomare Gruppen (je 2 Mitglieder), 2 Lanes, 5 Pipes, 0 Labels.
+# - lane_v (vertikal, 160×280) zwischen g_a und g_b: 2 Pipes auf den
+#   Spuren x = 495 / 505 (10 px um die Mittellinie x = 500).
+# - lane_h (horizontal, 880×60) unter beiden Gruppen: 3 Pipes auf den
+#   Spuren y = 400 / 410 / 420 (Mittellinie y = 410).
+# - Alle 5 Pipes liegen in Lanes (kein R-37-Fallback, kein `via`).
+schema: plantschema/v1
+canvas: { width: 1000, height: 500, background: "#0b1220" }
+
+components:
+  - id: ta
+    type: tank-buffer
+    at: [130, 200]
+  - id: pa
+    type: pump
+    at: [270, 120]
+  - id: hx
+    type: heatex-plate
+    at: [720, 240]
+  - id: rb
+    type: radiator
+    at: [850, 120]
+
+groups:
+  - id: g_a
+    label: "Erzeuger"
+    members: [ta, pa]
+    at: [60, 60]
+    size: [300, 280]
+  - id: g_b
+    label: "Verbraucher"
+    members: [hx, rb]
+    at: [640, 60]
+    size: [300, 280]
+
+lanes:
+  - id: lane_v
+    label: "Steig"
+    at: [420, 60]
+    size: [160, 280]
+    pipes: [p_v1, p_v2]
+  - id: lane_h
+    label: "Sammel"
+    at: [60, 380]
+    size: [880, 60]
+    pipes: [p_h1, p_h2, p_h3]
+
+pipes:
+  - id: p_v1
+    from: { comp: pa, port: out }
+    to: { comp: hx, port: in }
+    kind: vl
+  - id: p_v2
+    from: { comp: ta, port: right }
+    to: { comp: hx, port: top }
+    kind: vl
+  - id: p_h1
+    from: { comp: ta, port: bottom }
+    to: { comp: hx, port: bottom }
+    kind: rl
+  - id: p_h2
+    from: { comp: pa, port: in }
+    to: { comp: rb, port: out }
+    kind: rl
+  - id: p_h3
+    from: { comp: hx, port: out }
+    to: { comp: ta, port: left }
+    kind: rl

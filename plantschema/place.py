@@ -461,7 +461,17 @@ def _all_pipe_segments(
     from .route import schema_routes
 
     _ = comps  # Signatur stabil (Aufrufer übergeben die Komponenten-Map)
-    return schema_routes(schema)
+    hidden = schema.hidden_kind_values
+    if not hidden:
+        return schema_routes(schema)
+    # S4-L5c: ausgeblendete Pipes (hidden_kinds) blockieren keine Slots.
+    from .route import schema_routes_by_id
+
+    by_id = schema_routes_by_id(schema)
+    return [
+        by_id[p.id] for p in schema.pipes
+        if p.id in by_id and p.kind.value not in hidden
+    ]
 
 
 def _all_text_boxes(

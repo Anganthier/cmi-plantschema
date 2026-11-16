@@ -40,6 +40,8 @@ def _check_ids(schema: Schema, out: list[Problem]) -> None:
             code = (
                 "group-id-duplicate"
                 if kind0 == "groups" and path_kind == "groups"
+                else "lane-id-duplicate"
+                if kind0 == "lanes" and path_kind == "lanes"
                 else "dup-id"
             )
             out.append(
@@ -60,6 +62,8 @@ def _all_id_refs(schema: Schema) -> Iterable[tuple[str, int, str]]:
         yield "pipes", i, p.id
     for i, g in enumerate(schema.groups):
         yield "groups", i, g.id
+    for i, lane in enumerate(schema.lanes):
+        yield "lanes", i, lane.id
     for i, r in enumerate(schema.readouts):
         yield "readouts", i, r.id
     for i, lbl in enumerate(schema.labels):
@@ -314,6 +318,155 @@ def _check_groups(schema: Schema, out: list[Problem]) -> None:
             ))
 
 
+def _check_group_nesting(schema: Schema, out: list[Problem]) -> None:
+    """(h2) Nested Groups (S4-L5a, R-38): Shape + Include-Referenzen.
+
+    - `group-kind-shape`: composite mit `members`/`hub`/`order`/
+      `hub_at` oder ohne `includes`; atomic mit `includes`.
+    - `group-include-ref`: `includes`-ID existiert nicht als Gruppe.
+    - `group-include-composite`: composite inkludiert composite
+      (Tiefe max. 1).
+    - `group-include-cycle`: Gruppe liegt auf einem `includes`-Zyklus
+      (defensiv; inkl. Self-Include).
+
+    Containment (composite-Box ⊇ Kind-Boxen) ist Geometrie →
+    Kollisions-Gate `group-containment` (qa, Exit 3), nicht hier.
+    """
+    by_id: dict[str, int] = {}
+    for i, g in enumerate(schema.groups):
+        by_id.setdefault(g.id, i)
+    for i, g in enumerate(schema.groups):
+        base = f"groups[{i}]"
+        if g.kind == "composite":
+            if g.members:
+                out.append(Problem(
+                    "group-kind-shape",
+                    "composite-Gruppe darf keine `members` haben (reiner "
+                    f"Container, R-38; ist: {', '.join(g.members)})",
+                    f"{base}.members",
+                ))
+            if not g.includes:
+                out.append(Problem(
+                    "group-kind-shape",
+                    "composite-Gruppe braucht nicht-leere `includes` (R-38)",
+                    f"{base}.includes",
+                ))
+            for field in ("hub", "order", "hub_at"):
+                if getattr(g, field) is not None:
+                    out.append(Problem(
+                        "group-kind-shape",
+                        f"composite-Gruppe darf kein `{field}` haben "
+                        "(reiner Container, R-38)",
+                        f"{base}.{field}",
+                    ))
+        elif g.includes:
+            out.append(Problem(
+                "group-kind-shape",
+                "atomic-Gruppe darf keine `includes` haben (nur "
+                f"kind: composite, R-38; ist: {', '.join(g.includes)})",
+                f"{base}.includes",
+            ))
+        for ref in g.includes:
+            ci = by_id.get(ref)
+            if ci is None:
+                out.append(Problem(
+                    "group-include-ref",
+                    f"Include {ref!r} existiert nicht als Gruppe (R-38)",
+                    f"{base}.includes",
+                ))
+            elif (g.kind == "composite"
+                  and schema.groups[ci].kind == "composite"):
+                out.append(Problem(
+                    "group-include-composite",
+                    f"composite {g.id!r} inkludiert composite {ref!r} "
+                    "(Tiefe max. 1: nur atomare Gruppen, R-38)",
+                    f"{base}.includes",
+                ))
+    # Zyklus-Erkennung (defensiv): Gruppe g liegt auf einem Zyklus,
+    # wenn g von sich selbst über includes-Kanten erreichbar ist.
+    edges = {
+        i: [by_id[r] for r in g.includes if r in by_id]
+        for i, g in enumerate(schema.groups)
+    }
+    for i, g in enumerate(schema.groups):
+        seen: set[int] = set()
+        stack = list(edges[i])
+        while stack:
+            n = stack.pop()
+            if n == i:
+                out.append(Problem(
+                    "group-include-cycle",
+                    f"Gruppe {g.id!r} liegt auf einem `includes`-Zyklus "
+                    "(R-38)",
+                    f"groups[{i}].includes",
+                ))
+                break
+            if n in seen:
+                continue
+            seen.add(n)
+            stack.extend(edges[n])
+
+
+def _check_lanes(schema: Schema, out: list[Problem]) -> None:
+    """(h3) Lanes (S4-L5b, R-39): Geometrie + Pipe-Referenzen.
+
+    - `lane-geometry`: `at`/`size` fehlen oder <= 0.
+    - `lane-pipe-ref`: Pipe-ID in `lane.pipes` existiert nicht.
+    - `lane-pipe-duplicate`: Pipe steht in > 1 Lane (oder doppelt in
+      derselben Lane).
+    (`lane-id-duplicate` via `_check_ids`; Lane-Overlap ist Geometrie
+    → Kollisions-Gate `lane-box`, Exit 3.)
+    """
+    pipe_ids = {p.id for p in schema.pipes}
+    owners: dict[str, int] = {}
+    for i, lane in enumerate(schema.lanes):
+        base = f"lanes[{i}]"
+        for field in ("at", "size"):
+            v = getattr(lane, field)
+            if v is None or v[0] <= 0 or v[1] <= 0:
+                out.append(Problem(
+                    "lane-geometry",
+                    f"lane.{field} fehlt oder ist <= 0 (ist: {v!r}; R-39)",
+                    f"{base}.{field}",
+                ))
+        for pid in lane.pipes:
+            if pid not in pipe_ids:
+                out.append(Problem(
+                    "lane-pipe-ref",
+                    f"Pipe {pid!r} existiert nicht (R-39)",
+                    f"{base}.pipes",
+                ))
+                continue
+            owner = owners.setdefault(pid, i)
+            if owner != i or lane.pipes.count(pid) > 1:
+                out.append(Problem(
+                    "lane-pipe-duplicate",
+                    f"Pipe {pid!r} steht in mehreren Lanes "
+                    f"(lanes[{owner}] und lanes[{i}]; max. 1, R-39)",
+                    f"{base}.pipes",
+                ))
+
+
+def _check_hidden_kinds(schema: Schema, out: list[Problem]) -> None:
+    """(h4) S4-L5c: `hidden-pipe-in-lane` — eine Pipe, deren `kind` in
+    `hidden_kinds` steht, darf keiner Lane zugeordnet sein (unsichtbare
+    Pipe würde eine sichtbare Spur reservieren)."""
+    hidden = schema.hidden_kind_values
+    if not hidden:
+        return
+    kinds = {p.id: p.kind.value for p in schema.pipes}
+    for i, lane in enumerate(schema.lanes):
+        for pid in lane.pipes:
+            if kinds.get(pid) in hidden:
+                out.append(Problem(
+                    "hidden-pipe-in-lane",
+                    f"Pipe {pid!r} (kind={kinds[pid]}) ist per "
+                    f"hidden_kinds ausgeblendet, steht aber in einer Lane "
+                    f"(S4-L5c)",
+                    f"lanes[{i}].pipes",
+                ))
+
+
 def _check_component_placement(schema: Schema, out: list[Problem]) -> None:
     """(i) R-36 (S4-L2): Komponente ohne `at` braucht EINAUTIGE
     Gruppenzugehörigkeit (Engine-Placement via `layout.resolve`).
@@ -375,6 +528,9 @@ def validate(schema: Schema) -> list[Problem]:
     ports = _ports_by_comp(schema)
     _check_pipe_refs(schema, ports, out)
     _check_groups(schema, out)
+    _check_group_nesting(schema, out)
+    _check_lanes(schema, out)
+    _check_hidden_kinds(schema, out)
     _check_component_placement(schema, out)
     _check_readouts(schema, ports, out)
     _check_label_refs(schema, ports, out)

@@ -1,0 +1,25 @@
+# S4-L5c Negativ: ctl-Pipe steht in einer Lane, ctl ist per hidden_kinds
+# ausgeblendet → Validierungs-Problem `hidden-pipe-in-lane` (exit 2).
+schema: plantschema/v1
+canvas: { width: 600, height: 300 }
+hidden_kinds: [ctl]
+
+components:
+  - id: v1
+    type: valve-actuator
+    at: [100, 150]
+  - id: v2
+    type: throttle
+    at: [500, 150]
+
+lanes:
+  - id: lane_c
+    at: [160, 100]
+    size: [280, 40]
+    pipes: [p_c]
+
+pipes:
+  - id: p_c
+    from: { comp: v1, port: stem }
+    to: { comp: v2, port: stem }
+    kind: ctl

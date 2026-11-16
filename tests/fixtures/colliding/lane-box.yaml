@@ -1,0 +1,38 @@
+# S4-L5b (R-39): zwei Lane-Boxen überlappen > 50 % der kleineren Box
+# → exit 3 (Gate LANE-BOX).
+schema: plantschema/v1
+canvas: { width: 600, height: 400 }
+
+components:
+  - id: p1
+    type: pump
+    at: [100, 100]
+  - id: h1
+    type: radiator
+    at: [450, 300]
+  - id: p2
+    type: pump
+    at: [140, 60]
+  - id: h2
+    type: radiator
+    at: [500, 340]
+
+pipes:
+  - id: p_a
+    from: { comp: p1, port: out }
+    to: { comp: h1, port: in }
+    kind: vl
+  - id: p_b
+    from: { comp: p2, port: out }
+    to: { comp: h2, port: in }
+    kind: rl
+
+lanes:
+  - id: lane_a
+    at: [60, 180]
+    size: [480, 40]
+    pipes: [p_a]
+  - id: lane_b
+    at: [80, 190]
+    size: [460, 40]
+    pipes: [p_b]

@@ -1,0 +1,77 @@
+# S4-L5a Ladder L07 — Nested Groups (R-38), Stufe 1: 1 composite
+# (c_main) mit 2 atomaren Kindern (g_a, g_buf); das Kind g_buf sitzt
+# zusätzlich im 2. composite c_side (nebenan, inkludiert g_buf + g_c)
+# → Venn-Overlap c_main × c_side ist erlaubt (gemeinsames Kind g_buf).
+# Test:
+# - 2 Pipes intra-atomic (p_a_rl in g_a, p_c_loop in g_c).
+# - 1 Pipe inter-atomic im selben composite (p_a_buf: g_a → g_buf,
+#   kein Detour; g_c ist fremd, wird aber nicht gekreuzt).
+# - GROUP-CONTAINMENT: alle Kind-Boxen liegen strikt in ihren
+#   composite-Boxen.
+schema: plantschema/v1
+canvas: { width: 1000, height: 440, background: "#0b1220" }
+
+components:
+  - id: boiler1
+    type: boiler-oil
+    at: [130, 230]
+    label: { text: "Kessel" }
+  - id: pump1
+    type: pump
+    at: [250, 300]
+    label: { text: "P1" }
+  - id: tank1
+    type: tank-buffer
+    at: [490, 230]
+    label: { text: "Puffer", sub: "800 L" }
+  - id: heat1
+    type: radiator
+    at: [790, 230]
+    label: { text: "HK1" }
+  - id: heat2
+    type: radiator
+    at: [870, 320]
+    label: { text: "HK2" }
+
+groups:
+  - id: c_main
+    kind: composite
+    label: "Holz-Kreis"
+    includes: [g_a, g_buf]
+    at: [40, 40]
+    size: [600, 360]
+  - id: c_side
+    kind: composite
+    label: "Verbraucher-Kreis"
+    includes: [g_buf, g_c]
+    at: [345, 55]
+    size: [595, 340]
+  - id: g_a
+    label: "Erzeuger"
+    members: [boiler1, pump1]
+    at: [60, 80]
+    size: [260, 300]
+  - id: g_buf
+    label: "Puffer"
+    members: [tank1]
+    at: [360, 80]
+    size: [260, 300]
+  - id: g_c
+    label: "Heizung"
+    members: [heat1, heat2]
+    at: [660, 80]
+    size: [260, 300]
+
+pipes:
+  - id: p_a_rl
+    from: { comp: pump1, port: in }
+    to: { comp: boiler1, port: bottom }
+    kind: rl
+  - id: p_c_loop
+    from: { comp: heat1, port: out }
+    to: { comp: heat2, port: in }
+    kind: vl
+  - id: p_a_buf
+    from: { comp: boiler1, port: right }
+    to: { comp: tank1, port: left }
+    kind: vl

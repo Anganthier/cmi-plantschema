@@ -1,0 +1,31 @@
+# S4-L5a-Negativ-Fixture (R-38): zwei atomare Boxen g1/g2 überlappen
+# Venn-artig (g1: 60..400, g2: 160..500 → Overlap 240×300 = 71 % der
+# kleineren Box > 50 %), haben aber KEINEN gemeinsamen composite-
+# Elternteil (c1 inkludiert nur g1) → R-35 bleibt strikt → Gate exit 3
+# (GROUP-BOX `group-g1` × `group-g2`). Komponenten in den
+# nicht-überlappenden Randbereichen.
+schema: plantschema/v1
+canvas: { width: 800, height: 460, background: "#0b1220" }
+
+components:
+  - id: p1
+    type: pump
+    at: [100, 230]
+  - id: p2
+    type: pump
+    at: [460, 230]
+
+groups:
+  - id: c1
+    kind: composite
+    includes: [g1]
+    at: [40, 40]
+    size: [380, 360]
+  - id: g1
+    members: [p1]
+    at: [60, 80]
+    size: [340, 300]
+  - id: g2
+    members: [p2]
+    at: [160, 80]
+    size: [340, 300]

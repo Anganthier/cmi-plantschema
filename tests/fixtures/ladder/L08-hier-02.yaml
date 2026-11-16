@@ -1,0 +1,81 @@
+# S4-L5a Ladder L08 — Nested Groups (R-38), Stufe 2: 2 composites
+# (c_left, c_right) mit gemeinsamer atomarer Kind-Box g_s im
+# überlappenden Zentrum (Venn), 3 atomare Gruppen (g_l, g_s, g_r).
+# Test:
+# - p_l_s: Pipe ins geteilte Kind (g_l → g_s, gemeinsamer Eltern
+#   c_left → kein Detour).
+# - p_s_r: geteiltes Kind → g_r (gemeinsamer Eltern c_right → kein
+#   Detour).
+# - p_l_r: zwischen zwei „fremden" Kindern (g_l → g_r, KEIN gemeinsamer
+#   composite) → g_s ist fremd → R-37-Kanal-Detour unter g_s
+#   (untere Kante näher: Kanal-Linie y = 381).
+# - p_l_intra: intra-atomic in g_l.
+schema: plantschema/v1
+canvas: { width: 1100, height: 460, background: "#0b1220" }
+
+components:
+  - id: boiler1
+    type: boiler-oil
+    at: [190, 240]
+    label: { text: "Kessel" }
+  - id: pump1
+    type: pump
+    at: [190, 340]
+  - id: tank1
+    type: tank-buffer
+    at: [550, 240]
+    label: { text: "Puffer", sub: "1000 L" }
+  - id: heat1
+    type: radiator
+    at: [910, 240]
+    label: { text: "HK1" }
+  - id: heat2
+    type: radiator
+    at: [910, 340]
+
+groups:
+  - id: c_left
+    kind: composite
+    label: "Holz-Eltern"
+    includes: [g_l, g_s]
+    at: [40, 50]
+    size: [660, 360]
+  - id: c_right
+    kind: composite
+    label: "Solar-Eltern"
+    includes: [g_s, g_r]
+    at: [400, 60]
+    size: [660, 360]
+  - id: g_l
+    label: "Holz"
+    members: [boiler1, pump1]
+    at: [60, 100]
+    size: [260, 280]
+  - id: g_s
+    label: "Puffer"
+    members: [tank1]
+    at: [420, 100]
+    size: [260, 280]
+  - id: g_r
+    label: "Verbraucher"
+    members: [heat1, heat2]
+    at: [780, 100]
+    size: [260, 280]
+
+pipes:
+  - id: p_l_s
+    from: { comp: boiler1, port: right }
+    to: { comp: tank1, port: left }
+    kind: vl
+  - id: p_s_r
+    from: { comp: tank1, port: right }
+    to: { comp: heat1, port: in }
+    kind: vl
+  - id: p_l_r
+    from: { comp: pump1, port: out }
+    to: { comp: heat2, port: in }
+    kind: rl
+  - id: p_l_intra
+    from: { comp: pump1, port: in }
+    to: { comp: boiler1, port: left }
+    kind: rl

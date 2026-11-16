@@ -1,0 +1,24 @@
+# S4-L5a-Negativ-Fixture (R-38): composite-Gruppe MIT `members`
+# (reiner Container verletzt) → validate exit 2 (`group-kind-shape`).
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+
+components:
+  - id: p1
+    type: pump
+    at: [150, 200]
+  - id: t1
+    type: tank-buffer
+    at: [500, 250]
+
+groups:
+  - id: c1
+    kind: composite
+    includes: [g1]
+    members: [t1]
+    at: [40, 40]
+    size: [700, 400]
+  - id: g1
+    members: [p1]
+    at: [60, 80]
+    size: [260, 300]
