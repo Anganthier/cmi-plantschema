@@ -17,12 +17,16 @@ def fx(name: str) -> Path:
         "minimal": FIXTURES / "minimal" / "installation.yaml",
         "invalid": FIXTURES / "invalid" / "bad-refs.yaml",
         "invalid-double-membership": FIXTURES / "invalid" / "double-membership.yaml",
+        "invalid-placement-missing": FIXTURES / "invalid" / "placement-missing.yaml",
         "colliding": FIXTURES / "colliding" / "collide.yaml",
         "colliding-text-box": FIXTURES / "colliding" / "text-box.yaml",
         "colliding-symbol-text": FIXTURES / "colliding" / "symbol-text.yaml",
         "colliding-group-box": FIXTURES / "colliding" / "group-box.yaml",
+        "colliding-component-outside-group-box":
+            FIXTURES / "colliding" / "component-outside-group-box.yaml",
         "rich": FIXTURES / "rich" / "installation.yaml",
         "rich-groups": FIXTURES / "rich-groups.yaml",
+        "rich-groups-layout": FIXTURES / "rich-groups-layout.yaml",
     }[name]
 
 

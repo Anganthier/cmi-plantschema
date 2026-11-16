@@ -38,7 +38,7 @@ labels: [ … ]
 |---|---|---|
 | `id` | string (R-3) | M |
 | `type` | string, Katalog §5 | M |
-| `at` | `[x, y]` (Zentrum, R-4) | M |
+| `at` | `[x, y]` (Zentrum, R-4) | K (S4-L2/R-36: Default `None` — Mitglied EINER Gruppe → Engine-Placement; sonst `component-placement-missing`) |
 | `label` | `{ text, sub? }` | K |
 | `ports` | list[string] (Override) | K |
 | `loop` | string | K (→ `data-loop`) |
@@ -76,6 +76,8 @@ labels: [ … ]
 | `label` | string (Box-Beschriftung) | K |
 | `members` | list[string] (Component-IDs, R-3) | M |
 | `hub` | string (Component-ID, R-3) | K |
+| `order` (S4-L2, R-36) | list[string] (Member-IDs; Permutation von `members`) | K |
+| `hub_at` (S4-L2, R-36) | `[x, y]` Hub-Anker (Default: Box-Mitte) | K |
 | `at` | `[x, y]` obere linke Ecke der Box (R-35: > 0) | M |
 | `size` | `[bw, höhe]` Box-Breite/Höhe (R-35: > 0) | M |
 
@@ -103,8 +105,56 @@ labels: [ … ]
   gesetzt). Kollisions-Gate: **GROUP-BOX** (Overlap zweier Makro-Boxen
   → Kollision, exit 3; gleiche `OVERLAP_THRESHOLD`-Methodik wie die
   Text-Box-Edge-Checks: Overlap-Anteil der **kleineren** Box-Fläche
-  > 50 %, eine Kollision pro Paar). GROUP-BOX×COMPONENT und
-  GROUP-BOX×LABEL folgen in S4-L3.
+  > 50 %, eine Kollision pro Paar). GROUP-BOX×LABEL folgt in S4-L3
+   (Fremde-Box-Prüfung: Komponente in FREMDER Box).
+
+- **R-36 (M, S4-L2) Mikro-Layout-Engine (intra-Gruppen-Platzierung):**
+  Koordinaten werden GENERIERT, nicht gepflegt: die Autor-Pflicht ist
+  die Makro-Box (`at`/`size`), die Mitglieder werden von der Engine
+  (`plantschema/layout.py::resolve`) deterministisch IN die Box
+  platziert. Modelländerungen: `Component.at` ist **optional**
+  (Default `None`); `Group.order` (K) = explizite Mitglied-
+  Reihenfolge (Default: `members`; muss Permutation von `members`
+  sein: `group-order-member`); `Group.hub_at` (K) = expliziter
+  Hub-Anker (Default: Box-Mitte). Pipeline-Schritt ZWISCHEN `io.load`
+  und `validate` (CLI: `resolve(load_schema(…))`); danach arbeiten
+  `validate`/`check`/`render` auf dem resolved Layout.
+  - **Anker-Regeln:** Hub-Anker A = `hub_at` ?? Box-Mitte; hat der
+    Hub ein explizites `at`, gewinnt das (Author-Override). Der Hub
+    (ohne `at`) wird auf A platziert. 0 Nicht-Hub-Mitglieder → nur
+    der Hub.
+  - **Spalten-Split:** Nicht-Hub-Mitglieder M in `order`-Reihenfolge
+    (Default: `members` minus Hub): linke Spalte = erste Hälfte
+    (ceil(n/2) Slots, x = box.x + 0.28·box.w), rechte Spalte =
+    Rest (x = box.x + 0.72·box.w).
+  - **Zeilen:** gleichmäßig in `[box.y + 0.25·box.h,
+    box.y + 0.75·box.h]` (Einzel-Element = Box-Mitte-y); je Spalte
+    unabhängig voneinander.
+  - **Port-Ortungs-Erhaltung (Refinement, Spalten-Zuweisung):** vor
+    der Spalten-Zuweisung prüft die Engine, welche Ports des
+    Mitglieds in `pipes` (from+to) genutzt werden und wo diese je
+    Port-Katalog (`symbols`) liegen: nur `left`-Achsen → linke
+    Spalte, nur `right`-Achsen → rechte Spalte; mehrdeutig (keine
+    genutzten Ports / up-down / beides) → Spalten-Split mit
+    deterministischem Tiebreak über die `order`-Reihenfolge (bei
+    vollem Quoten-Topf: Überhang in die andere Spalte).
+  - **Override-Hierarchie:** explizites `at` > Engine (die Engine
+    überschreibt explizite `at` NIE; gilt für Hub und Mitglieder).
+  - **Determinismus-Garantie:** gleiche Eingabe → gleiche
+    Koordinaten; ganzzahlige Werte (`int(round(·))`, half-to-even);
+    keine Randomisierung, keine zeitbasierte Heuristik.
+  - **Validierung:** `component-placement-missing` (R-36) —
+    `at: None` + keine bzw. nicht-eindeutige Gruppenzugehörigkeit
+    (Doppel-Mitgliedschaft) → Problem (Exit 2).
+  - **Gate:** `COMPONENT-OUTSIDE-GROUP-BOX` (R-36) — Mitglied,
+    dessen Symbol-BBox (`SYMBOL_BOUNDS`) die **EIGENE** Makro-Box
+    verlässt → Kollision (Exit 3; strikt > 0 px Überstand,
+    Methode wie die bestehenden Box-Checks; Koordinaten =
+    Symbol-BBox-Mitte). Fremde-Box-Prüfung folgt in S4-L3.
+  - **Routing-Verallgemeinerung** (via-Kanäle/Vermeidungslogik aus
+    Gruppen-Layouts) folgt als **R-37 (S4-L3)** — R-36 generiert
+    nur die Plazierung, die via-Routen bleiben Autor-Pflicht
+    (R-10).
 
 ## 5. P&ID-Symbole + Port-Geometrie-Katalog (S2, Seed cmi)
 
@@ -253,6 +303,8 @@ Ausrichtung für Readout-Offset + Pipe-Anbindung.
 | `group-hub-not-member` | Group-Hub ∉ members (R-35) |
 | `group-double-membership` | Komponente in > 1 Gruppe (R-35) |
 | `group-geometry` | `at`/`size` mit Wert ≤ 0 (R-35, Makro-Box-Kanon) |
+| `group-order-member` | `order` ist keine Permutation von `members` (R-36, S4-L2) |
+| `component-placement-missing` | `at: None` + keine/nicht-eindeutige Gruppenzugehörigkeit (R-36, S4-L2) |
 
 - **R-20 (M)** `validate` liefert **alle** Probleme (nicht nur das erste);
   CLI gibt je Problem eine Zeile aus und exitet 2.
@@ -323,6 +375,10 @@ Text `.txt`); Style-Block enthält cmi-V6.3-Klassen (`.pid`, `.pid-t`,
      (Text, Symbol)-Paar** (dedupliziert).
   4. **Readout-Größen-Gate** (`readout-size`): emittierter Readout-Text
      Wert ≥ 12 px, Label ≥ 11 px (R-28, harte Prüfung).
+  5. **GROUP-BOX** (`group-box`, R-35/S4-L1): Overlap zweier Makro-
+     Boxen (Kanon s. R-35). 6. **COMPONENT-OUTSIDE-GROUP-BOX**
+     (`component-outside-group-box`, R-36/S4-L2): Mitglied außerhalb
+     der EIGENEN Makro-Box (Kanon s. R-36).
   Kanon-BBox: `text-anchor`-Korrektur (`end` → x = anchor_x − width,
   `middle` → x = anchor_x − width/2; cmi `text_bbox`-Logik).
   **Report-Format:** je Kollision eine Zeile
@@ -367,6 +423,14 @@ Stiele, Pfeil-Enden; `valve`-Alias = valve-2way):
   (`group-id-duplicate`, `group-member-ref`, `group-hub-ref`,
   `group-hub-not-member`, `group-double-membership`,
   `group-geometry`); bestehende R-1…R-34 unverändert.
+
+- **ALC-Änderung (S4-L2):** `Component.at` optional (Default `None`,
+  R-36: Engine-Placement für Gruppen-Mitglieder); `Group.order` +
+  `Group.hub_at` neu (K); Mikro-Layout-Engine `layout.resolve`
+  (Pipeline-Schritt zwischen load und validate, R-36); 2 neue
+  Validierungs-Probleme (`component-placement-missing`,
+  `group-order-member`); neues Gate-Check `component-outside-group-box`
+  (R-36); bestehende R-1…R-35 unverändert.
 
 ## 13. Exit-Codes (CLI-Kanon)
 

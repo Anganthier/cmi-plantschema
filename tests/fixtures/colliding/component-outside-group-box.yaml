@@ -1,0 +1,18 @@
+# S4-L2-Negativ-Fixture (R-36): Mitglied mit EXPLIZITEN `at` außerhalb
+# der EIGENEN Makro-Gruppen-Box → COMPONENT-OUTSIDE-GROUP-BOX (check
+# exit 3). Box g1 = 40..160 × 40..160; p2 bei (200,100) (Pump-Bounds
+# 180..220 × 87..122) liegt rechts außerhalb.
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+components:
+  - id: p1
+    type: pump
+    at: [100, 100]
+  - id: p2
+    type: pump
+    at: [200, 100]
+groups:
+  - id: g1
+    members: [p1, p2]
+    at: [40, 40]
+    size: [120, 120]

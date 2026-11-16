@@ -289,6 +289,17 @@ def _check_groups(schema: Schema, out: list[Problem]) -> None:
                     f"(members: {', '.join(g.members)})",
                     f"{base}.hub",
                 ))
+        # R-36: `order` (falls gesetzt) = Permutation von `members`.
+        if g.order is not None and (
+            set(g.order) != set(g.members) or len(g.order) != len(g.members)
+        ):
+                out.append(Problem(
+                    "group-order-member",
+                    f"`order` muss eine Permutation von `members` sein "
+                    f"(members: {', '.join(g.members)}, "
+                    f"order: {', '.join(g.order)})",
+                    f"{base}.order",
+                ))
         if g.at[0] <= 0 or g.at[1] <= 0:
             out.append(Problem(
                 "group-geometry",
@@ -301,6 +312,41 @@ def _check_groups(schema: Schema, out: list[Problem]) -> None:
                 f"group.size muss > 0 sein (ist: {g.size!r})",
                 f"{base}.size",
             ))
+
+
+def _check_component_placement(schema: Schema, out: list[Problem]) -> None:
+    """(i) R-36 (S4-L2): Komponente ohne `at` braucht EINAUTIGE
+    Gruppenzugehörigkeit (Engine-Placement via `layout.resolve`).
+
+    `at: None` + keine bzw. nicht-eindeutige Gruppenzugehörigkeit
+    (Doppel-Mitgliedschaft) → `component-placement-missing`
+    (Validierungs-Problem, CLI-Exit 2).
+    """
+    owners: dict[str, int] = {}
+    for i, g in enumerate(schema.groups):
+        for m in g.members:
+            owners.setdefault(m, i)
+    for i, c in enumerate(schema.components):
+        if c.at is not None:
+            continue
+        owner = owners.get(c.id)
+        if owner is None:
+            out.append(Problem(
+                "component-placement-missing",
+                "Komponente ohne `at` und ohne Gruppenzugehörigkeit "
+                "(braucht `at` ODER Mitglied EINER Gruppe, R-36)",
+                f"components[{i}].at",
+            ))
+        else:
+            dup = sum(1 for g in schema.groups if c.id in g.members)
+            if dup > 1:
+                out.append(Problem(
+                    "component-placement-missing",
+                    f"Komponente ohne `at` ist Mitglied mehrerer Gruppen "
+                    f"({dup} Gruppen) — Gruppenzugehörigkeit nicht eindeutig "
+                    f"(R-36)",
+                    f"components[{i}].at",
+                ))
 
 
 def _find_component(schema: Schema, comp_id: str) -> Component | None:
@@ -329,6 +375,7 @@ def validate(schema: Schema) -> list[Problem]:
     ports = _ports_by_comp(schema)
     _check_pipe_refs(schema, ports, out)
     _check_groups(schema, out)
+    _check_component_placement(schema, out)
     _check_readouts(schema, ports, out)
     _check_label_refs(schema, ports, out)
     _check_labels(schema, out)

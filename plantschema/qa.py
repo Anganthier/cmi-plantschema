@@ -19,8 +19,13 @@ Geprüft (cmi-`svg_layout_check.py`-Kanon, Bounding-Box-Heuristik):
 - **GROUP-BOX** (`group-box`, S4-L1, R-35): Overlap zweier Makro-
   Gruppen-Boxen (AABB) → Kollision; gleiche `OVERLAP_THRESHOLD`-
   Methodik wie die Text-Box-Edge-Checks (> 50 % der kleineren Box-
-  Fläche). (GROUP-BOX×COMPONENT und ×LABEL folgen in S4-L3 — nicht
-  Teil dieses Gates.)
+  Fläche). (GROUP-BOX×LABEL folgt in S4-L3 — nicht Teil dieses Gates.)
+- **COMPONENT-OUTSIDE-GROUP-BOX** (`component-outside-group-box`,
+  S4-L2, R-36): Mitglied-Komponente, deren Symbol-BBox (aus
+  `symbols.SYMBOL_BOUNDS`) die **EIGENE** Makro-Gruppen-Box verlässt
+  → Kollision; Methode wie die bestehenden Box-Checks (AABB:
+  `component_bounds` × `group_box`, strikt: > 0 px Überstand).
+  Fremde-Box-Prüfung (Komponente in FREMDER Box) folgt in S4-L3.
 
 Kanon: `WIDTH_FACTOR=0.52`, `HEIGHT_FACTOR=1.2`, Sampling 5 px
 (cmi `sample_segment`); `text-anchor`-Korrektur in der BBox
@@ -91,6 +96,7 @@ class Collision:
 
     kind: str  # "text-text" | "line-text" | "text-box-edge" | "symbol-text"
     #            | "readout-size" | "group-box" (S4-L1, R-35)
+    #            | "component-outside-group-box" (S4-L2, R-36)
     elem_a: str
     elem_b: str
     x: int
@@ -191,6 +197,47 @@ def _check_group_boxes(
                 ))
 
 
+def _check_component_outside_group_box(
+    components: Sequence[Component],
+    groups: Sequence[Group],
+    out: list[Collision],
+) -> None:
+    """COMPONENT-OUTSIDE-GROUP-BOX-Gate (S4-L2, R-36): Mitglied-
+    Komponente außerhalb der EIGENEN Makro-Gruppen-Box (AABB; strikt
+    > 0 px Überstand, Methode wie die bestehenden Box-Checks).
+
+    Fremde-Box-Prüfung (Komponente in FREMDER Box) folgt in S4-L3.
+    Kollisions-Koordinate = Überstandspunkt: Symbol-BBox-Mitte
+    (int-gerundet); eine Kollision pro (Komponente, Gruppe)-Paar,
+    deterministische Schema-Reihenfolge (Komponenten × Gruppen).
+    """
+    if not groups:
+        return
+    owner: dict[str, int] = {}
+    for i, g in enumerate(groups):
+        for m in g.members:
+            owner.setdefault(m, i)
+    for c in components:
+        gi = owner.get(c.id)
+        if gi is None or c.at is None:
+            continue  # nicht-gruppig / ungeplante Komponente (validate)
+        box = group_box(groups[gi])
+        assert c.at is not None
+        cb = component_bounds(c.type, c.at)
+        over_x = max(box[0] - cb[0], 0.0, cb[2] - box[2])
+        over_y = max(box[1] - cb[1], 0.0, cb[3] - box[3])
+        if over_x <= 0 and over_y <= 0:
+            continue
+        out.append(Collision(
+            "component-outside-group-box",
+            f"comp-{c.id}", f"group-{groups[gi].id}",
+            int(round((cb[0] + cb[2]) / 2)), int(round((cb[1] + cb[3]) / 2)),
+            f"Mitglied {c.id!r} außerhalb der Gruppen-Box "
+            f"groups[{gi}].at={groups[gi].at!r} size={groups[gi].size!r} "
+            f"(Überstand x={over_x:.0f} px, y={over_y:.0f} px; R-36)",
+        ))
+
+
 def _check_readout_size(texts: Sequence[TextElem], out: list[Collision]) -> None:
     """Readout-Größen-Gate (R-34): Wert ≥ 12 px, Label ≥ 11 px."""
     from .place import LABEL_FONT_MIN, VALUE_FONT_MIN
@@ -231,14 +278,18 @@ def detect_collisions(
       Klassen).
     - `groups` (S4-L1, R-35): Gruppe-Liste → Makro-Boxen (`at`/`size`)
       → GROUP-BOX-Overlap-Check (Kollision nur bei > 50 % Overlap).
+      + (S4-L2, R-36) COMPONENT-OUTSIDE-GROUP-BOX-Check (Mitglied
+      außerhalb der EIGENEN Box, strikt > 0 px; `components` +
+      `groups` zusammen).
     """
     component_boxes: dict[str, tuple[float, float, float, float]] | None = (
-        {c.id: component_bounds(c.type, c.at) for c in components}
+        {c.id: component_bounds(c.type, c.at)
+         for c in components if c.at is not None}
         if components
         else None
     )
     _ = readouts, labels  # R-34-API-Vertrag (s. Docstring)
-    return _detect(texts, pipes, component_boxes, groups)
+    return _detect(texts, pipes, component_boxes, groups, components)
 
 
 def _detect(
@@ -246,9 +297,11 @@ def _detect(
     pipes: Sequence[PipeGeometry],
     component_boxes: dict[str, tuple[float, float, float, float]] | None,
     groups: Sequence[Group] = (),
+    components: Sequence[Component] = (),
 ) -> list[Collision]:
-    """S3-Check-Set (R-34) + S4-L1-Gruppe-Check (R-35): TEXT×TEXT,
-    LINE×TEXT, TEXT×BOX-Kante, USE×TEXT, Readout-Größe, GROUP-BOX."""
+    """S3-Check-Set (R-34) + S4-L1-Gruppe-Check (R-35) +
+    S4-L2-Mitglied-Check (R-36): TEXT×TEXT, LINE×TEXT, TEXT×BOX-Kante,
+    USE×TEXT, Readout-Größe, GROUP-BOX, COMPONENT-OUTSIDE-GROUP-BOX."""
     out: list[Collision] = []
     boxes = [(t, text_bbox(t)) for t in texts if t.text]
 
@@ -311,6 +364,8 @@ def _detect(
 
     # 6) GROUP-BOX-Overlap (S4-L1, R-35).
     _check_group_boxes(groups, out)
+    # 7) COMPONENT-OUTSIDE-GROUP-BOX (S4-L2, R-36).
+    _check_component_outside_group_box(components, groups, out)
     return out
 
 

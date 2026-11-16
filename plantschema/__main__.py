@@ -18,6 +18,7 @@ from pathlib import Path
 from . import __version__
 from .emit import compute_layout, render
 from .io import SchemaLoadError, load_schema
+from .layout import resolve
 from .model import SchemaError
 from .place import collect_slot_warnings
 from .qa import detect_collisions, texts_for_schema
@@ -105,6 +106,10 @@ def main(argv: list[str] | None = None) -> int:
     except SchemaError as exc:
         _print_schema_errors(exc)
         return EXIT_SCHEMA
+
+    # S4-L2 (R-36): Mikro-Layout ZWISCHEN load und validate — danach
+    # arbeiten validate/check/render alle auf dem resolved Layout.
+    schema = resolve(schema)
 
     if args.command in ("load", "validate"):
         problems = validate(schema)

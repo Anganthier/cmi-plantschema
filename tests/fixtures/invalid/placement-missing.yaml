@@ -1,0 +1,15 @@
+# S4-L2-Negativ-Fixture (R-36): Komponente OHNE `at` und OHNE
+# Gruppenzugehörigkeit → `component-placement-missing` (validate exit 2).
+schema: plantschema/v1
+canvas: { width: 800, height: 500, background: "#0b1220" }
+components:
+  - id: p1
+    type: pump
+    at: [100, 100]
+  - id: lost
+    type: valve-2way
+groups:
+  - id: g1
+    members: [p1]
+    at: [40, 40]
+    size: [200, 120]

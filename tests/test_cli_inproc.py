@@ -140,6 +140,73 @@ def test_validate_exit2_double_membership():
     assert "'p1'" in err
 
 
+# ------------------------------------------------------------ S4-L2 (R-36):
+# Mikro-Layout-Fixtures (Positiv: rich-groups-layout; Negativ:
+# component-placement-missing, component-outside-group-box).
+
+
+def test_validate_rich_groups_layout_ok():
+    """S4-L2 (R-36): alle Mitglieder ohne `at` (nur Boxen) →
+    validate exit 0 (Engine-Placement + `component-placement-missing`
+    bleibt aus)."""
+    rc, err = call("validate", "--in", str(fx("rich-groups-layout")))
+    assert rc == EXIT_OK, err
+
+
+def test_check_rich_groups_layout_exit0():
+    """S4-L2 (R-36): Engine-Layout → check exit 0 (gruppen-kompakt,
+    0 Kollisionen inkl. COMPONENT-OUTSIDE-GROUP-BOX)."""
+    rc, err = call("check", "--in", str(fx("rich-groups-layout")))
+    assert rc == EXIT_OK, err
+    assert "Kollision" not in err
+
+
+def test_render_rich_groups_layout_exit0_and_deterministic(tmp_path):
+    """S4-L2 E2E (R-36): render exit 0, XML gültig (ET.parse),
+    Byte-Determinismus (2× render → sha256-identisch)."""
+    import hashlib
+    import xml.etree.ElementTree as ET
+
+    out1, out2 = tmp_path / "a.svg", tmp_path / "b.svg"
+    rc, err = call("render", "--in", str(fx("rich-groups-layout")),
+                   "--out", str(out1))
+    assert rc == EXIT_OK, err
+    ET.parse(out1)  # XML-Validierung
+    content = out1.read_text(encoding="utf-8")
+    assert 'id="layer-groups"' in content
+    assert 'id="group-g_puffer"' in content
+    for gid in ("g_kessel", "g_kollektor", "g_heizkreis", "g_warmepumpe"):
+        assert f'id="group-{gid}"' in content
+    rc, err = call("render", "--in", str(fx("rich-groups-layout")),
+                   "--out", str(out2))
+    assert rc == EXIT_OK, err
+    h1 = hashlib.sha256(out1.read_bytes()).hexdigest()
+    h2 = hashlib.sha256(out2.read_bytes()).hexdigest()
+    assert h1 == h2
+
+
+def test_validate_exit2_placement_missing():
+    """S4-L2 (R-36): at-None-Komponente ohne Gruppe → exit 2 +
+    component-placement-missing-Zeile."""
+    rc, err = call("validate", "--in",
+                   str(fx("invalid-placement-missing")))
+    assert rc == EXIT_SCHEMA
+    assert "components[1].at" in err
+    assert "ohne `at`" in err
+
+
+def test_check_exit3_component_outside_group_box():
+    """S4-L2 (R-36): explizites `at` außerhalb der EIGENEN Box →
+    exit 3 + COMPONENT-OUTSIDE-GROUP-BOX-Zeile."""
+    rc, err = call(
+        "check", "--in",
+        str(fx("colliding-component-outside-group-box")),
+    )
+    assert rc == EXIT_GATE
+    assert "COMPONENT-OUTSIDE-GROUP-BOX" in err
+    assert "comp-p2" in err and "group-g1" in err
+
+
 def test_check_rich_warn_block_exit0():
     """S3 (R-33): Rich → Warnungs-Block (Slot-Fallbacks), Exit 0."""
     rc, err = call("check", "--in", str(fx("rich")))

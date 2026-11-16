@@ -142,7 +142,10 @@ class LabelSpec(_Model):
 class Component(_Model):
     id: str
     type: str
-    at: Point
+    #: S4-L2 (R-36): optional — Mitglied EINER Gruppe darf `at` weglassen
+    #: (Engine-Placement via `layout.resolve`); nicht-gruppige Komponente
+    #: ohne `at` → Validierungs-Problem `component-placement-missing`.
+    at: Point | None = None
     label: LabelSpec | None = None
     ports: list[str] | None = None  # Override: nur diese Ports zulassen
     loop: str | None = None
@@ -163,7 +166,10 @@ class Group(_Model):
       müssen > 0 sein (Validierungs-Problem `group-geometry`, R-35).
     - `members` = Member-Komponenten-IDs (Referenz-Checks in `validate`).
     - `hub` = optionale Zentralkomponente (muss ∈ `members`, falls gesetzt);
-      Mikro-Layout-Verankerung für S4-L2 (R-36 folgt).
+      Mikro-Layout-Verankerung für S4-L2.
+    - `order` (S4-L2, R-36) = explizite Mitglied-Reihenfolge für die
+      Spalten-Split-Zuordnung (Default: `members`-Reihenfolge, ohne Hub).
+    - `hub_at` (S4-L2, R-36) = expliziter Hub-Anker (Default: Box-Mitte).
     """
 
     id: str
@@ -172,6 +178,8 @@ class Group(_Model):
     hub: str | None = None
     at: Point
     size: Point
+    order: list[str] | None = None
+    hub_at: Point | None = None
 
     @field_validator("id")
     @classmethod
@@ -183,6 +191,15 @@ class Group(_Model):
     def _v_members(cls, v: list[str]) -> list[str]:
         for m in v:
             check_id(m, "group.members[]")
+        return v
+
+    @field_validator("order")
+    @classmethod
+    def _v_order(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        for m in v:
+            check_id(m, "group.order[]")
         return v
 
     @field_validator("hub")
